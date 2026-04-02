@@ -14,6 +14,96 @@ Get Spotify tracks in true FLAC from Tidal, Qobuz & Amazon Music — no account 
 
 ![Image](https://github.com/user-attachments/assets/c2624ca5-8569-49f0-950e-4410b523cea1)
 
+## Build from source (Linux)
+
+### Prerequisites
+
+- Go 1.26+
+- Node.js 20+
+- pnpm
+- Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
+- Build libraries for WebKitGTK/GTK3
+
+Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+```
+
+Fedora:
+
+```bash
+sudo dnf install -y @development-tools pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel
+```
+
+On newer Fedora releases, `webkitgtk6.0-devel` may also be available, but Wails v2 builds should use `webkit2gtk4.1-devel`.
+
+Arch Linux:
+
+```bash
+sudo pacman -S --needed base-devel pkgconf gtk3 webkit2gtk-4.1
+```
+
+### Build
+
+```bash
+git clone https://github.com/afkarxyz/SpotiFLAC.git
+cd SpotiFLAC
+
+# Install Wails CLI (if not installed)
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+# Verify your environment (optional but recommended)
+wails doctor
+
+# Verify Go version (this repo requires Go 1.26+)
+go version
+
+# Build desktop app
+wails build
+
+# Fedora / distros that only ship WebKitGTK 4.1
+wails build -tags webkit2_41
+```
+
+The compiled binary is generated in `build/bin/SpotiFLAC`.
+
+### Build RPM package (Linux)
+
+This repository includes an RPM packaging setup via `nfpm`.
+
+Install `nfpm`:
+
+```bash
+go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+```
+
+Build RPM:
+
+```bash
+./scripts/build-rpm.sh
+```
+
+Output:
+
+- `dist/SpotiFLAC_<version>_linux_amd64.rpm`
+
+Packaging files:
+
+- `packaging/linux/nfpm.yaml`
+- `packaging/linux/spotiflac.desktop`
+
+### Troubleshooting
+
+- If `wails doctor` shows `libwebkit` as `Unknown` or `Not Found` on Fedora while `webkit2gtk4.1-devel` is installed, verify with:
+
+```bash
+pkg-config --modversion webkit2gtk-4.1
+```
+
+If the command returns a version number, WebKitGTK is correctly installed for builds.
+
 ## Other projects
 
 ### [SpotiFLAC Next](https://github.com/afkarxyz/SpotiFLAC-Next)
