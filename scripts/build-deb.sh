@@ -37,7 +37,7 @@ cd ..
 # Fedora/newer distros use WebKitGTK 4.1 pkg-config name.
 wails build -tags webkit2_41
 
-TARGET="build/dist/SpotiFLAC_${VERSION}_linux_x86_64.rpm"
-VERSION="$VERSION" nfpm package --packager rpm --config packaging/linux/nfpm.rpm.yaml --target "$TARGET"
+TARGET="build/dist/SpotiFLAC_${VERSION}_linux_amd64.deb"
+VERSION="$VERSION" nfpm package --packager deb --config packaging/linux/nfpm.deb.yaml --target "$TARGET"
 
-echo "RPM package created: $TARGET"
+echo "DEB package created: $TARGET"

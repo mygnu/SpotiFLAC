@@ -29,15 +29,26 @@ fi
 mkdir -p build/dist
 
 # Generate the app icon from SVG
+echo "Generating app icon..."
 cd frontend
 pnpm install
 node scripts/generate-icon.js
 cd ..
 
 # Fedora/newer distros use WebKitGTK 4.1 pkg-config name.
+echo "Building with Wails..."
 wails build -tags webkit2_41
 
-TARGET="build/dist/SpotiFLAC_${VERSION}_linux_x86_64.rpm"
-VERSION="$VERSION" nfpm package --packager rpm --config packaging/linux/nfpm.rpm.yaml --target "$TARGET"
+echo "Creating packages..."
 
-echo "RPM package created: $TARGET"
+# Build RPM
+RPM_TARGET="build/dist/SpotiFLAC_${VERSION}_linux_x86_64.rpm"
+VERSION="$VERSION" nfpm package --packager rpm --config packaging/linux/nfpm.rpm.yaml --target "$RPM_TARGET"
+echo "✓ RPM package created: $RPM_TARGET"
+
+# Build DEB
+DEB_TARGET="build/dist/SpotiFLAC_${VERSION}_linux_amd64.deb"
+VERSION="$VERSION" nfpm package --packager deb --config packaging/linux/nfpm.deb.yaml --target "$DEB_TARGET"
+echo "✓ DEB package created: $DEB_TARGET"
+
+echo "Packages ready in: build/dist/"
