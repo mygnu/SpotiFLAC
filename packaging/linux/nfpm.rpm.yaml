@@ -22,8 +22,14 @@ contents:
     dst: /usr/share/applications/spotiflac.desktop
   - src: ./build/appicon.png
     dst: /usr/share/icons/hicolor/1024x1024/apps/spotiflac.png
+  - src: ./build/appicon.png
+    dst: /usr/share/pixmaps/spotiflac.png
   - src: ./LICENSE
     dst: /usr/share/licenses/spotiflac/LICENSE
+
+scripts:
+  postinstall: ./packaging/linux/postinstall.sh
+  postremove: ./packaging/linux/postremove.sh
 
 rpm:
   group: Applications/Multimedia
