@@ -110,10 +110,6 @@ If the command returns a version number, WebKitGTK is correctly installed for bu
 
 Get Spotify tracks in true Lossless from Tidal, Qobuz, Amazon Music, Deezer & Apple Music — no account required.
 
-### [SpotiDownloader](https://github.com/spotbye/SpotiDownloader)
-
-Get Spotify tracks, albums, playlists and discography in MP3 and FLAC.
-
 ### [SpotubeDL.com](https://spotubedl.com)
 
 Download Spotify Tracks, Albums, Playlists & Discography as MP3/OGG/Opus.
@@ -202,7 +198,7 @@ The software is provided "as is", without warranty of any kind. The author assum
 
 ## API Credits
 
-[MusicBrainz](https://musicbrainz.org) · [LRCLIB](https://lrclib.net) · [Songlink/Odesli](https://song.link) · [hifi-api](https://github.com/binimum/hifi-api) · [dabmusic.xyz](https://dabmusic.xyz)
+[MusicBrainz](https://musicbrainz.org) · [LRCLIB](https://lrclib.net) · [Songlink/Odesli](https://song.link) · [hifi-api](https://github.com/binimum/hifi-api) · [dabmusic.xyz](https://dabmusic.xyz) · [musicdl.me](https://musicdl.me)
 
 > [!TIP]
 >
