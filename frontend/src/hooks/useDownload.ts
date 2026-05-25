@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { downloadTrack, fetchSpotifyMetadata } from "@/lib/api";
-import { getSettings, parseTemplate, type TemplateData } from "@/lib/settings";
+import { getSettings, hasConfiguredCustomTidalApi, parseTemplate, sanitizeAutoOrder, type TemplateData } from "@/lib/settings";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { joinPath, sanitizePath, getFirstArtist } from "@/lib/utils";
 import { logger } from "@/lib/logger";
@@ -86,10 +86,11 @@ export function useDownload(region: string) {
         setDownloadRemainingCount(Math.max(0, safeTotalCount - safeCompletedCount));
     };
     const downloadWithAutoFallback = async (id: string, settings: any, trackName?: string, artistName?: string, albumName?: string, playlistName?: string, position?: number, spotifyId?: string, durationMs?: number, releaseYear?: string, albumArtist?: string, releaseDate?: string, coverUrl?: string, spotifyTrackNumber?: number, spotifyDiscNumber?: number, spotifyTotalTracks?: number, spotifyTotalDiscs?: number, copyright?: string, publisher?: string) => {
-        const service = settings.downloader;
+        const allowTidal = hasConfiguredCustomTidalApi(settings.customTidalApi);
+        const service = settings.downloader === "tidal" && !allowTidal ? "auto" : settings.downloader;
         const query = trackName && artistName ? `${trackName} ${artistName} ` : undefined;
         const os = settings.operatingSystem;
-        const customTidalApi = typeof settings.customTidalApi === "string" && settings.customTidalApi.trim().startsWith("https://")
+        const customTidalApi = allowTidal && typeof settings.customTidalApi === "string" && settings.customTidalApi.trim().startsWith("https://")
             ? settings.customTidalApi.trim().replace(/\/+$/g, "")
             : undefined;
         let outputDir = settings.downloadPath;
@@ -193,7 +194,7 @@ export function useDownload(region: string) {
             itemID = await AddToDownloadQueue(id, trackName || "", displayArtist || "", albumName || "");
         }
         if (service === "auto") {
-            const order = (settings.autoOrder || "tidal-amazon-qobuz").split("-");
+            const order = sanitizeAutoOrder(settings.autoOrder, allowTidal).split("-");
             let streamingURLs: any = null;
             if (spotifyId && shouldFetchStreamingURLs(order)) {
                 try {
@@ -416,7 +417,8 @@ export function useDownload(region: string) {
         return singleServiceResponse;
     };
     const downloadWithItemID = async (settings: any, itemID: string, trackName?: string, artistName?: string, albumName?: string, folderName?: string, position?: number, spotifyId?: string, durationMs?: number, isAlbum?: boolean, releaseYear?: string, albumArtist?: string, releaseDate?: string, coverUrl?: string, spotifyTrackNumber?: number, spotifyDiscNumber?: number, spotifyTotalTracks?: number, spotifyTotalDiscs?: number, copyright?: string, publisher?: string) => {
-        const service = settings.downloader;
+        const allowTidal = hasConfiguredCustomTidalApi(settings.customTidalApi);
+        const service = settings.downloader === "tidal" && !allowTidal ? "auto" : settings.downloader;
         const query = trackName && artistName ? `${trackName} ${artistName}` : undefined;
         const os = settings.operatingSystem;
         let outputDir = settings.downloadPath;
@@ -477,7 +479,7 @@ export function useDownload(region: string) {
             }
         }
         if (service === "auto") {
-            const order = (settings.autoOrder || "tidal-amazon-qobuz").split("-");
+            const order = sanitizeAutoOrder(settings.autoOrder, allowTidal).split("-");
             let streamingURLs: any = null;
             if (spotifyId && shouldFetchStreamingURLs(order)) {
                 try {

@@ -33,10 +33,39 @@ type CurrentIPInfo struct {
 	Source      string `json:"source,omitempty"`
 }
 
+type APIStatusTargetResult struct {
+	Target  string `json:"target"`
+	Label   string `json:"label"`
+	Online  bool   `json:"online"`
+	Message string `json:"message,omitempty"`
+}
+
+type APIStatusReport struct {
+	Type       string                  `json:"type"`
+	Online     bool                    `json:"online"`
+	RequireAll bool                    `json:"require_all"`
+	Details    []APIStatusTargetResult `json:"details"`
+}
+
 const checkOperationTimeout = 10 * time.Second
 
 func NewApp() *App {
 	return &App{}
+}
+
+func (a *App) LogStatusConsole(level string, message string) {
+	normalizedLevel := strings.ToLower(strings.TrimSpace(level))
+	if normalizedLevel == "" {
+		normalizedLevel = "info"
+	}
+
+	line := fmt.Sprintf("[%s] [%s] %s\n", time.Now().Format("15:04:05"), normalizedLevel, strings.TrimSpace(message))
+	switch normalizedLevel {
+	case "error":
+		_, _ = fmt.Fprint(os.Stderr, line)
+	default:
+		fmt.Print(line)
+	}
 }
 
 type timedResult[T any] struct {
@@ -276,11 +305,12 @@ func (a *App) startup(ctx context.Context) {
 	if err := backend.InitProviderPriorityDB(); err != nil {
 		fmt.Printf("Failed to init provider priority DB: %v\n", err)
 	}
-	go func() {
-		if err := backend.PrimeTidalAPIList(); err != nil {
-			fmt.Printf("Failed to prime Tidal API list: %v\n", err)
-		}
-	}()
+	if err := backend.CleanupLegacyTidalPublicAPIState(); err != nil {
+		fmt.Printf("Failed to clean legacy Tidal API cache: %v\n", err)
+	}
+	if err := backend.SanitizePersistedConfigSettings(); err != nil {
+		fmt.Printf("Failed to sanitize persisted config settings: %v\n", err)
+	}
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -662,20 +692,15 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 		}
 
 	case "tidal":
-		if req.TidalAPIURL == "" || req.TidalAPIURL == "auto" {
-			downloader := backend.NewTidalDownloader("")
-			if req.ServiceURL != "" {
-				filename, err = downloader.DownloadByURLWithFallback(req.ServiceURL, req.OutputDir, req.AudioFormat, req.FilenameFormat, req.TrackNumber, req.Position, req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.UseAlbumTrackNumber, req.CoverURL, req.EmbedMaxQualityCover, req.SpotifyTrackNumber, req.SpotifyDiscNumber, req.SpotifyTotalTracks, req.SpotifyTotalDiscs, req.Copyright, req.Publisher, req.Composer, metadataSeparator, req.ISRC, spotifyURL, req.AllowFallback, req.UseFirstArtistOnly, req.UseSingleGenre, req.EmbedGenre)
-			} else {
-				filename, err = downloader.Download(req.SpotifyID, req.OutputDir, req.AudioFormat, req.FilenameFormat, req.TrackNumber, req.Position, req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.UseAlbumTrackNumber, req.CoverURL, req.EmbedMaxQualityCover, req.SpotifyTrackNumber, req.SpotifyDiscNumber, req.SpotifyTotalTracks, req.SpotifyTotalDiscs, req.Copyright, req.Publisher, req.Composer, metadataSeparator, req.ISRC, spotifyURL, req.AllowFallback, req.UseFirstArtistOnly, req.UseSingleGenre, req.EmbedGenre)
-			}
+		if !strings.HasPrefix(strings.TrimRight(strings.TrimSpace(req.TidalAPIURL), "/"), "https://") {
+			err = fmt.Errorf("a configured HTTPS Tidal instance is required")
+			break
+		}
+		downloader := backend.NewTidalDownloader(req.TidalAPIURL)
+		if req.ServiceURL != "" {
+			filename, err = downloader.DownloadByURL(req.ServiceURL, req.OutputDir, req.AudioFormat, req.FilenameFormat, req.TrackNumber, req.Position, req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.UseAlbumTrackNumber, req.CoverURL, req.EmbedMaxQualityCover, req.SpotifyTrackNumber, req.SpotifyDiscNumber, req.SpotifyTotalTracks, req.SpotifyTotalDiscs, req.Copyright, req.Publisher, req.Composer, metadataSeparator, req.ISRC, spotifyURL, req.AllowFallback, req.UseFirstArtistOnly, req.UseSingleGenre, req.EmbedGenre)
 		} else {
-			downloader := backend.NewTidalDownloader(req.TidalAPIURL)
-			if req.ServiceURL != "" {
-				filename, err = downloader.DownloadByURL(req.ServiceURL, req.OutputDir, req.AudioFormat, req.FilenameFormat, req.TrackNumber, req.Position, req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.UseAlbumTrackNumber, req.CoverURL, req.EmbedMaxQualityCover, req.SpotifyTrackNumber, req.SpotifyDiscNumber, req.SpotifyTotalTracks, req.SpotifyTotalDiscs, req.Copyright, req.Publisher, req.Composer, metadataSeparator, req.ISRC, spotifyURL, req.AllowFallback, req.UseFirstArtistOnly, req.UseSingleGenre, req.EmbedGenre)
-			} else {
-				filename, err = downloader.Download(req.SpotifyID, req.OutputDir, req.AudioFormat, req.FilenameFormat, req.TrackNumber, req.Position, req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.UseAlbumTrackNumber, req.CoverURL, req.EmbedMaxQualityCover, req.SpotifyTrackNumber, req.SpotifyDiscNumber, req.SpotifyTotalTracks, req.SpotifyTotalDiscs, req.Copyright, req.Publisher, req.Composer, metadataSeparator, req.ISRC, spotifyURL, req.AllowFallback, req.UseFirstArtistOnly, req.UseSingleGenre, req.EmbedGenre)
-			}
+			filename, err = downloader.Download(req.SpotifyID, req.OutputDir, req.AudioFormat, req.FilenameFormat, req.TrackNumber, req.Position, req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.UseAlbumTrackNumber, req.CoverURL, req.EmbedMaxQualityCover, req.SpotifyTrackNumber, req.SpotifyDiscNumber, req.SpotifyTotalTracks, req.SpotifyTotalDiscs, req.Copyright, req.Publisher, req.Composer, metadataSeparator, req.ISRC, spotifyURL, req.AllowFallback, req.UseFirstArtistOnly, req.UseSingleGenre, req.EmbedGenre)
 		}
 
 	case "qobuz":
@@ -986,15 +1011,7 @@ func (a *App) CheckAPIStatus(apiType string, apiURL string) bool {
 	isOnline, err := runWithTimeout(checkOperationTimeout, func() (bool, error) {
 		switch apiType {
 		case "tidal":
-			if checkGroupedAPIStatus("tidal", buildTidalStatusCheckURLs(apiURL)) {
-				return true, nil
-			}
-			if strings.TrimSpace(apiURL) == "" {
-				if _, refreshErr := backend.RefreshTidalAPIList(true); refreshErr == nil && checkGroupedAPIStatus("tidal", buildTidalStatusCheckURLs("")) {
-					return true, nil
-				}
-			}
-			return false, nil
+			return checkGroupedAPIStatus("tidal", buildTidalStatusCheckURLs(apiURL)), nil
 		case "qobuz", "qbz":
 			return checkGroupedAPIStatus("qobuz", buildQobuzStatusCheckURLs(apiURL)), nil
 		case "amazon":
@@ -1020,6 +1037,39 @@ func (a *App) CheckAPIStatus(apiType string, apiURL string) bool {
 	}
 
 	return isOnline
+}
+
+func (a *App) CheckAPIStatusReport(apiType string, apiURL string) APIStatusReport {
+	report, err := runWithTimeout(checkOperationTimeout, func() (APIStatusReport, error) {
+		switch apiType {
+		case "tidal":
+			return buildGroupedAPIStatusReport("tidal", buildTidalStatusCheckURLs(apiURL), false), nil
+		case "qobuz", "qbz":
+			return buildGroupedAPIStatusReport("qobuz", buildQobuzStatusCheckURLs(apiURL), false), nil
+		case "amazon":
+			return buildGroupedAPIStatusReport("amazon", buildAmazonStatusCheckURLs(apiURL), false), nil
+		case "lrclib":
+			return buildGroupedAPIStatusReport("lrclib", buildLRCLIBStatusCheckURLs(apiURL), false), nil
+		case "musicbrainz":
+			return buildGroupedAPIStatusReport("musicbrainz", buildMusicBrainzStatusCheckURLs(apiURL), false), nil
+		default:
+			return buildGroupedAPIStatusReport(apiType, []string{strings.TrimSpace(apiURL)}, false), nil
+		}
+	})
+	if err != nil {
+		return APIStatusReport{
+			Type:       apiType,
+			Online:     false,
+			RequireAll: apiType == "qobuz" || apiType == "qbz",
+			Details: []APIStatusTargetResult{{
+				Target:  strings.TrimSpace(apiURL),
+				Label:   describeAPIStatusTarget(apiType, apiURL),
+				Online:  false,
+				Message: err.Error(),
+			}},
+		}
+	}
+	return report
 }
 
 func (a *App) CheckCustomTidalAPI(apiURL string) bool {
@@ -1108,46 +1158,18 @@ func (a *App) CheckCustomTidalAPI(apiURL string) bool {
 
 func buildTidalStatusCheckURLs(apiURL string) []string {
 	apiURL = strings.TrimRight(strings.TrimSpace(apiURL), "/")
-	if apiURL != "" {
-		return []string{fmt.Sprintf("%s/track/?id=441821360&quality=HI_RES_LOSSLESS", apiURL)}
+	if apiURL == "" {
+		return nil
 	}
-
-	apis, err := backend.GetRotatedTidalAPIList()
-	if err != nil {
-		fmt.Printf("Warning: failed to load rotated Tidal API list for status check: %v\n", err)
-	}
-
-	urls := make([]string, 0, len(apis))
-	for _, baseURL := range apis {
-		baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-		if baseURL == "" {
-			continue
-		}
-		urls = append(urls, fmt.Sprintf("%s/track/?id=441821360&quality=HI_RES_LOSSLESS", baseURL))
-	}
-
-	return urls
+	return []string{fmt.Sprintf("%s/track/?id=441821360&quality=HI_RES_LOSSLESS", apiURL)}
 }
 
 func buildQobuzStatusCheckURLs(apiURL string) []string {
 	if trimmed := strings.TrimSpace(apiURL); trimmed != "" {
-		return []string{buildQobuzStatusCheckURL(trimmed)}
+		return []string{trimmed}
 	}
 
-	bases := backend.GetQobuzStreamAPIBaseURLs()
-	urls := make([]string, 0, len(bases)+1)
-	for _, baseURL := range bases {
-		urls = append(urls, buildQobuzStatusCheckURL(baseURL))
-	}
-	if musicDLURL := strings.TrimSpace(backend.GetQobuzMusicDLDownloadAPIURL()); musicDLURL != "" {
-		urls = append(urls, musicDLURL)
-	}
-	return urls
-}
-
-func buildQobuzStatusCheckURL(apiBase string) string {
-	apiBase = strings.TrimSpace(apiBase)
-	return fmt.Sprintf("%s360735657&quality=27", apiBase)
+	return backend.GetQobuzDownloadProviderURLs()
 }
 
 func buildAmazonStatusCheckURLs(apiURL string) []string {
@@ -1213,10 +1235,222 @@ func checkGroupedAPIStatus(apiType string, checkURLs []string) bool {
 	return false
 }
 
+func buildGroupedAPIStatusReport(apiType string, checkURLs []string, requireAll bool) APIStatusReport {
+	filtered := make([]string, 0, len(checkURLs))
+	for _, rawURL := range checkURLs {
+		target := strings.TrimSpace(rawURL)
+		if target == "" {
+			continue
+		}
+		filtered = append(filtered, target)
+	}
+
+	report := APIStatusReport{
+		Type:       apiType,
+		Online:     !requireAll,
+		RequireAll: requireAll,
+		Details:    make([]APIStatusTargetResult, len(filtered)),
+	}
+
+	if len(filtered) == 0 {
+		report.Online = false
+		return report
+	}
+
+	var wg sync.WaitGroup
+	for index, target := range filtered {
+		wg.Add(1)
+		go func(idx int, rawTarget string) {
+			defer wg.Done()
+			report.Details[idx] = checkSingleAPIStatusDetailed(apiType, rawTarget)
+		}(index, target)
+	}
+	wg.Wait()
+
+	if requireAll {
+		report.Online = true
+		for _, detail := range report.Details {
+			if !detail.Online {
+				report.Online = false
+				break
+			}
+		}
+	} else {
+		report.Online = false
+		for _, detail := range report.Details {
+			if detail.Online {
+				report.Online = true
+				break
+			}
+		}
+	}
+
+	return report
+}
+
+func checkAllGroupedAPIStatus(apiType string, checkURLs []string) bool {
+	filtered := make([]string, 0, len(checkURLs))
+	for _, rawURL := range checkURLs {
+		url := strings.TrimSpace(rawURL)
+		if url == "" {
+			continue
+		}
+		filtered = append(filtered, url)
+	}
+
+	if len(filtered) == 0 {
+		return false
+	}
+
+	results := make(chan bool, len(filtered))
+	var wg sync.WaitGroup
+
+	for _, checkURL := range filtered {
+		wg.Add(1)
+		go func(target string) {
+			defer wg.Done()
+			results <- checkSingleAPIStatus(apiType, target)
+		}(checkURL)
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for online := range results {
+		if !online {
+			return false
+		}
+	}
+
+	return true
+}
+
+func describeAPIStatusTarget(apiType string, checkURL string) string {
+	trimmedType := strings.TrimSpace(strings.ToLower(apiType))
+	trimmedURL := strings.TrimSpace(checkURL)
+
+	if trimmedType == "qobuz" || trimmedType == "qbz" {
+		switch {
+		case backend.IsQobuzWJHEProviderURL(trimmedURL):
+			return "WJHE"
+		case backend.IsQobuzMusicDLProviderURL(trimmedURL):
+			return "MusicDL"
+		case backend.IsQobuzGDStudioProviderURL(trimmedURL):
+			parsed, err := url.Parse(trimmedURL)
+			if err == nil {
+				host := strings.ToLower(strings.TrimSpace(parsed.Host))
+				switch {
+				case strings.Contains(host, "xyz"):
+					return "GDStudio XYZ"
+				case strings.Contains(host, "org"):
+					return "GDStudio ORG"
+				}
+			}
+			return "GDStudio"
+		}
+	}
+
+	if trimmedURL != "" {
+		if parsed, err := url.Parse(trimmedURL); err == nil && strings.TrimSpace(parsed.Host) != "" {
+			return strings.TrimSpace(parsed.Host)
+		}
+	}
+
+	if trimmedType == "" {
+		return "Unknown"
+	}
+
+	return strings.ToUpper(trimmedType)
+}
+
+func checkSingleAPIStatusDetailed(apiType string, checkURL string) APIStatusTargetResult {
+	result := APIStatusTargetResult{
+		Target: strings.TrimSpace(checkURL),
+		Label:  describeAPIStatusTarget(apiType, checkURL),
+	}
+
+	client := &http.Client{Timeout: 4 * time.Second}
+	trimmedType := strings.TrimSpace(strings.ToLower(apiType))
+
+	if trimmedType == "qobuz" || trimmedType == "qbz" {
+		var err error
+		switch {
+		case backend.IsQobuzWJHEProviderURL(checkURL):
+			err = backend.CheckQobuzWJHEStatusDetailed(client)
+		case backend.IsQobuzMusicDLProviderURL(checkURL):
+			err = backend.CheckQobuzMusicDLStatusDetailed(client)
+		case backend.IsQobuzGDStudioProviderURL(checkURL):
+			err = backend.CheckQobuzGDStudioAPIStatusDetailed(client, checkURL)
+		default:
+			err = fmt.Errorf("unknown qobuz provider url: %s", strings.TrimSpace(checkURL))
+		}
+
+		if err != nil {
+			result.Message = err.Error()
+			return result
+		}
+
+		result.Online = true
+		result.Message = "stream URL resolved"
+		return result
+	}
+
+	req, err := backend.NewRequestWithDefaultHeaders(http.MethodGet, checkURL, nil)
+	if err != nil {
+		result.Message = fmt.Sprintf("failed to create request: %v", err)
+		return result
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		result.Message = fmt.Sprintf("request failed: %v", err)
+		return result
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	if err != nil {
+		result.Message = fmt.Sprintf("failed to read response: %v", err)
+		return result
+	}
+
+	switch trimmedType {
+	case "amazon":
+		if resp.StatusCode == http.StatusOK && strings.Contains(string(body), `"amazonMusic":"up"`) {
+			result.Online = true
+			result.Message = `amazonMusic="up"`
+			return result
+		}
+		if resp.StatusCode != http.StatusOK {
+			result.Message = fmt.Sprintf("HTTP %d: %s", resp.StatusCode, previewResponseBody(body, 160))
+			return result
+		}
+		result.Message = `amazonMusic was not reported as "up"`
+		return result
+	default:
+		if resp.StatusCode == http.StatusOK {
+			result.Online = true
+			result.Message = fmt.Sprintf("HTTP %d", resp.StatusCode)
+			return result
+		}
+		result.Message = fmt.Sprintf("HTTP %d: %s", resp.StatusCode, previewResponseBody(body, 160))
+		return result
+	}
+}
+
 func checkSingleAPIStatus(apiType string, checkURL string) bool {
 	client := &http.Client{Timeout: 4 * time.Second}
-	if (apiType == "qobuz" || apiType == "qbz") && strings.EqualFold(strings.TrimSpace(checkURL), strings.TrimSpace(backend.GetQobuzMusicDLDownloadAPIURL())) {
-		return backend.CheckQobuzMusicDLStatus(client)
+	if apiType == "qobuz" || apiType == "qbz" {
+		switch {
+		case backend.IsQobuzWJHEProviderURL(checkURL):
+			return backend.CheckQobuzWJHEStatus(client)
+		case backend.IsQobuzMusicDLProviderURL(checkURL):
+			return backend.CheckQobuzMusicDLStatus(client)
+		case backend.IsQobuzGDStudioProviderURL(checkURL):
+			return backend.CheckQobuzGDStudioAPIStatus(client, checkURL)
+		}
 	}
 
 	req, err := backend.NewRequestWithDefaultHeaders(http.MethodGet, checkURL, nil)
@@ -2045,6 +2279,7 @@ func (a *App) SaveSettings(settings map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
+	settings = backend.SanitizeSettingsMap(settings)
 
 	dir := filepath.Dir(configPath)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -2102,7 +2337,7 @@ func (a *App) LoadSettings() (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	return settings, nil
+	return backend.SanitizeSettingsMap(settings), nil
 }
 
 func (a *App) LoadFonts() ([]map[string]interface{}, error) {

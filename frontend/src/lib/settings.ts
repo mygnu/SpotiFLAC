@@ -185,7 +185,7 @@ export const DEFAULT_SETTINGS: Settings = {
     tidalQuality: "LOSSLESS",
     qobuzQuality: "6",
     amazonQuality: "original",
-    autoOrder: "tidal-qobuz-amazon",
+    autoOrder: "qobuz-amazon",
     autoQuality: "16",
     allowFallback: true,
     createPlaylistFolder: true,
@@ -521,6 +521,33 @@ function normalizeCustomTidalApi(value: unknown): string {
         ? value.trim().replace(/\/+$/g, "")
         : "";
 }
+export function hasConfiguredCustomTidalApi(value: unknown): boolean {
+    return normalizeCustomTidalApi(value).startsWith("https://");
+}
+export function sanitizeAutoOrder(order: unknown, allowTidal: boolean): string {
+    const allowedServices = allowTidal
+        ? new Set(["tidal", "qobuz", "amazon"])
+        : new Set(["qobuz", "amazon"]);
+    const fallbackOrder = allowTidal ? "tidal-qobuz-amazon" : "qobuz-amazon";
+    if (typeof order !== "string") {
+        return fallbackOrder;
+    }
+    const normalized = order
+        .split("-")
+        .map((part) => part.trim().toLowerCase())
+        .filter((part, index, parts) => part !== "" && allowedServices.has(part) && parts.indexOf(part) === index);
+    return normalized.length >= 2 ? normalized.join("-") : fallbackOrder;
+}
+function normalizeDownloader(value: unknown, allowTidal: boolean): Settings["downloader"] {
+    const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (normalized === "tidal") {
+        return allowTidal ? "tidal" : "auto";
+    }
+    if (normalized === "qobuz" || normalized === "amazon" || normalized === "auto") {
+        return normalized;
+    }
+    return DEFAULT_SETTINGS.downloader;
+}
 function normalizeExistingFileCheckMode(mode: unknown): ExistingFileCheckMode {
     switch (typeof mode === "string" ? mode.trim().toLowerCase() : "") {
         case "isrc":
@@ -583,12 +610,15 @@ function normalizeSettingsPayload(settings: SettingsPayload): SettingsPayload {
         normalized.amazonQuality = "original";
     }
     if (!("autoOrder" in normalized)) {
-        normalized.autoOrder = "tidal-qobuz-amazon";
+        normalized.autoOrder = DEFAULT_SETTINGS.autoOrder;
     }
     if (!("autoQuality" in normalized)) {
         normalized.autoQuality = "16";
     }
     normalized.customTidalApi = normalizeCustomTidalApi(normalized.customTidalApi);
+    const allowTidal = hasConfiguredCustomTidalApi(normalized.customTidalApi);
+    normalized.downloader = normalizeDownloader(normalized.downloader, allowTidal);
+    normalized.autoOrder = sanitizeAutoOrder(normalized.autoOrder, allowTidal);
     if (!("allowFallback" in normalized)) {
         normalized.allowFallback = true;
     }

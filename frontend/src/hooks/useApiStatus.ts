@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API_SOURCES, checkApiStatus, getApiStatusState, subscribeApiStatus, } from "@/lib/api-status";
+import { API_SOURCES, checkApiStatus, checkCurrentApiStatusesOnly, checkSpotiFLACNextStatusesOnly, getApiStatusState, subscribeApiStatus, } from "@/lib/api-status";
 export function useApiStatus() {
     const [state, setState] = useState(getApiStatusState);
     useEffect(() => {
@@ -11,5 +11,7 @@ export function useApiStatus() {
         ...state,
         sources: API_SOURCES,
         checkOne: (sourceId: string) => checkApiStatus(sourceId),
+        checkAllCurrent: () => checkCurrentApiStatusesOnly(),
+        checkAllNext: () => checkSpotiFLACNextStatusesOnly(),
     };
 }

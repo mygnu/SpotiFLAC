@@ -1,24 +1,18 @@
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
 import { openExternal } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, } from "@/components/ui/card";
-import { Star, GitFork, Clock, Download, Blocks, Heart, Copy, CircleCheck, Info } from "lucide-react";
+import { Star, GitFork, Clock, Download, Info } from "lucide-react";
 import AudioTTSProIcon from "@/assets/audiotts-pro.webp";
 import ChatGPTTTSIcon from "@/assets/chatgpt-tts.webp";
 import XIcon from "@/assets/x.webp";
-import XProIcon from "@/assets/x-pro.webp";
 import SpotubeDLIcon from "@/assets/icons/spotubedl.svg";
 import XBatchDLIcon from "@/assets/icons/xbatchdl.svg";
 import SpotiFLACNextIcon from "@/assets/icons/next.svg";
-import KofiLogo from "@/assets/ko-fi.gif";
-import KofiSvg from "@/assets/kofi_symbol.svg";
-import UsdtBarcode from "@/assets/usdt.jpg";
 import { langColors } from "@/assets/github-lang-colors";
 const browserExtensionItems = [
     { icon: AudioTTSProIcon, label: "AudioTTS Pro", alt: "AudioTTS Pro" },
     { icon: ChatGPTTTSIcon, label: "ChatGPT TTS", alt: "ChatGPT TTS" },
     { icon: XIcon, label: "Twitter/X Media Batch Downloader", alt: "Twitter/X Media Batch Downloader" },
-    { icon: XProIcon, label: "Twitter/X Media Batch Downloader Pro", alt: "Twitter/X Media Batch Downloader Pro" },
 ];
 const projectCardClass = "cursor-pointer gap-3 py-5 transition-colors hover:bg-muted/50 dark:hover:bg-accent/50";
 const projectCardHeaderClass = "px-5 gap-1.5";
@@ -26,10 +20,8 @@ const projectCardContentClass = "px-5";
 const projectBodyClass = "text-[13px] leading-snug";
 const releaseMetaClass = "text-xs text-muted-foreground whitespace-nowrap";
 const releaseVersionClass = "text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded-sm font-mono font-semibold whitespace-nowrap";
-export function AboutPage() {
-    const [activeTab, setActiveTab] = useState<"projects" | "support">("projects");
+export function OtherProjects() {
     const [repoStats, setRepoStats] = useState<Record<string, any>>({});
-    const [copiedUsdt, setCopiedUsdt] = useState(false);
     useEffect(() => {
         const fetchRepoStats = async () => {
             const CACHE_KEY = "github_repo_stats_v4";
@@ -181,24 +173,10 @@ export function AboutPage() {
     };
     return (<div className="flex flex-col space-y-3">
       <div className="flex items-center justify-between shrink-0">
-        <h2 className="text-2xl font-bold tracking-tight">About</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Other Projects</h2>
       </div>
 
-      <div className="flex gap-2 border-b shrink-0">
-        <Button variant={activeTab === "projects" ? "default" : "ghost"} size="sm" onClick={() => setActiveTab("projects")} className="rounded-b-none">
-          <Blocks className="h-4 w-4"/>
-          Other Projects
-        </Button>
-        <Button variant={activeTab === "support" ? "default" : "ghost"} size="sm" onClick={() => setActiveTab("support")} className="rounded-b-none">
-          <Heart className="h-4 w-4"/>
-          Support Me
-        </Button>
-      </div>
-
-      <div className="flex-1 min-h-0">
-
-
-        {activeTab === "projects" && (<div className="pr-1.5">
+      <div className="flex-1 min-h-0 pr-1.5">
             <div className="grid gap-2 grid-cols-3">
               <Card className={projectCardClass} onClick={() => openExternal("https://github.com/spotbye/SpotiFLAC-Next")}>
                 <CardHeader className={projectCardHeaderClass}>
@@ -249,7 +227,7 @@ export function AboutPage() {
                         Note
                       </div>
                       <p className="text-xs leading-snug text-sky-700 dark:text-sky-300">
-                        This project released as a token of appreciation for those who have supported SpotiFLAC on Ko-fi. It’s not a paid product, but it’s shared privately through a supporter-only post.
+                        This project released as a token of appreciation for those who have supported SpotiFLAC through Ko-fi, Patreon, or crypto. It’s not a paid product, but it’s shared privately through a supporter-only post.
                       </p>
                     </div>
                   </CardContent>)}
@@ -313,7 +291,7 @@ export function AboutPage() {
                   </CardContent>)}
               </Card>
               <div className="flex h-full flex-col gap-1.5">
-                <Card className={`${projectCardClass} flex-1`} onClick={() => openExternal("https://exyezed.qzz.io/")}>
+                <Card className={`${projectCardClass} flex-1`} onClick={() => openExternal("https://exyezed.fyi/")}>
                     <CardHeader className={projectCardHeaderClass}>
                     <CardTitle className="leading-tight">Browser Extensions & Scripts</CardTitle>
                     <CardDescription className="flex flex-col gap-2.5 pt-1.5">
@@ -339,55 +317,6 @@ export function AboutPage() {
                 </Card>
               </div>
             </div>
-          </div>)}
-
-        {activeTab === "support" && (<div className="flex flex-col items-center justify-center p-4 space-y-6">
-            <div className="flex flex-col md:flex-row w-full max-w-3xl bg-card rounded-xl border shadow-sm">
-              
-              <div className="flex-1 p-6 flex flex-col items-center justify-between border-b md:border-b-0 md:border-r space-y-6">
-                <div className="flex flex-col items-center space-y-4">
-                  <div className="h-32 flex items-center justify-center w-full relative">
-                    <img src={KofiLogo} className="w-72 absolute pointer-events-none" alt="Ko-fi"/>
-                  </div>
-                  <h4 className="font-semibold text-foreground">Support via Ko-fi</h4>
-                  <p className="text-sm text-muted-foreground text-center px-4">
-                    Enjoying the project? You can support ongoing development by buying me a coffee.
-                  </p>
-                </div>
-                <Button className="h-10 w-full text-sm font-semibold text-white gap-2 group bg-[#72a4f2] hover:bg-[#5f8cd6]" onClick={() => openExternal("https://ko-fi.com/afkarxyz")}>
-                  <img src={KofiSvg} className="w-5 h-5 shrink-0" alt="" aria-hidden="true"/>
-                  Support me on Ko-fi
-                </Button>
-              </div>
-
-              
-              <div className="flex-1 p-6 flex flex-col items-center justify-between space-y-6">
-                <div className="flex flex-col items-center space-y-4 w-full">
-                  <div className="h-32 flex items-center justify-center">
-                    <div className="p-2 bg-white rounded-xl shadow-sm border">
-                      <img src={UsdtBarcode} className="w-24 h-24 object-contain" alt="USDT Barcode"/>
-                    </div>
-                  </div>
-                  <h4 className="font-semibold text-foreground">USDT (TRC20)</h4>
-                  <p className="text-sm text-muted-foreground text-center px-4">
-                    Crypto donations are also accepted. Scan the QR code or copy the address.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 bg-muted/50 pl-3 pr-1.5 py-1.5 rounded-lg border w-full justify-between h-10">
-                  <code className="text-xs font-mono text-muted-foreground truncate" title="THnzAAwZgp2Sq5CAXLP2njQDhTvgZG9EWs">
-                    THnzAAwZgp2Sq5CAXLP2njQDhTvgZG9EWs
-                  </code>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 hover:bg-background" onClick={() => {
-                navigator.clipboard.writeText("THnzAAwZgp2Sq5CAXLP2njQDhTvgZG9EWs");
-                setCopiedUsdt(true);
-                setTimeout(() => setCopiedUsdt(false), 500);
-            }}>
-                    {copiedUsdt ? <CircleCheck className="h-3.5 w-3.5 text-green-500"/> : <Copy className="h-3.5 w-3.5"/>}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>)}
       </div>
     </div>);
 }

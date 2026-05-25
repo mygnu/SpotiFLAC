@@ -24,15 +24,16 @@ import { AudioResamplerPage } from "@/components/AudioResamplerPage";
 import { FileManagerPage } from "@/components/FileManagerPage";
 import { SettingsPage } from "@/components/SettingsPage";
 import { DebugLoggerPage } from "@/components/DebugLoggerPage";
-import { AboutPage } from "@/components/AboutPage";
+import { OtherProjects } from "@/components/OtherProjects";
 import { HistoryPage } from "@/components/HistoryPage";
+import { SupportPage } from "@/components/SupportPage";
 import type { HistoryItem } from "@/components/FetchHistory";
 import { useDownload } from "@/hooks/useDownload";
 import { useMetadata } from "@/hooks/useMetadata";
 import { useLyrics } from "@/hooks/useLyrics";
 import { useCover } from "@/hooks/useCover";
 import { useAvailability } from "@/hooks/useAvailability";
-import { ensureSpotiFLACNextStatusCheckStarted } from "@/lib/api-status";
+import { ensureApiStatusCheckStarted } from "@/lib/api-status";
 import { useDownloadQueueDialog } from "@/hooks/useDownloadQueueDialog";
 import { useDownloadProgress } from "@/hooks/useDownloadProgress";
 import { buildPlaylistFolderName } from "@/lib/playlist";
@@ -198,7 +199,7 @@ function App() {
         };
         mediaQuery.addEventListener("change", handleChange);
         checkForUpdates();
-        ensureSpotiFLACNextStatusCheckStarted();
+        ensureApiStatusCheckStarted();
         void loadHistory();
         return () => {
             mediaQuery.removeEventListener("change", handleChange);
@@ -528,8 +529,10 @@ function App() {
                 return <SettingsPage onUnsavedChangesChange={setHasUnsavedSettings} onResetRequest={setResetSettingsFn}/>;
             case "debug":
                 return <DebugLoggerPage />;
-            case "about":
-                return <AboutPage />;
+            case "projects":
+                return <OtherProjects />;
+            case "support":
+                return <SupportPage />;
             case "history":
                 return <HistoryPage onHistorySelect={(cachedData) => {
                         metadata.loadFromCache(cachedData);

@@ -114,13 +114,11 @@ Get Spotify tracks in true Lossless from Tidal, Qobuz, Amazon Music, Deezer & Ap
 
 Download Spotify Tracks, Albums, Playlists & Discography as MP3/OGG/Opus.
 
+## Related projects
+
 ### [SpotiFLAC (Mobile)](https://github.com/zarzet/SpotiFLAC-Mobile)
 
 SpotiFLAC for Android & iOS — maintained by [@zarzet](https://github.com/zarzet)
-
-### [SpotiFLAC (CLI)](https://github.com/Nizarberyan/SpotiFLAC)
-
-SpotiFLAC for command-line environments — maintained by [@Nizarberyan](https://github.com/Nizarberyan)
 
 ### [SpotiFLAC (Python Module)](https://github.com/ShuShuzinhuu/SpotiFLAC-Module-Version)
 
@@ -198,7 +196,7 @@ The software is provided "as is", without warranty of any kind. The author assum
 
 ## API Credits
 
-[MusicBrainz](https://musicbrainz.org) · [LRCLIB](https://lrclib.net) · [Songlink/Odesli](https://song.link) · [hifi-api](https://github.com/binimum/hifi-api) · [dabmusic.xyz](https://dabmusic.xyz) · [musicdl.me](https://musicdl.me)
+[MusicBrainz](https://musicbrainz.org) · [LRCLIB](https://lrclib.net) · [Songlink/Odesli](https://song.link) · [hifi-api](https://github.com/binimum/hifi-api) · [WJHE](https://music.wjhe.top) · [GDStudio](https://music.gdstudio.xyz) · [MusicDL](https://musicdl.me)
 
 > [!TIP]
 >

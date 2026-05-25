@@ -6,18 +6,18 @@ import { ActivityIcon, type ActivityIconHandle } from "@/components/ui/activity"
 import { TerminalIcon } from "@/components/ui/terminal";
 import { FileMusicIcon, type FileMusicIconHandle } from "@/components/ui/file-music";
 import { FilePenIcon, type FilePenIconHandle } from "@/components/ui/file-pen";
+import { BugReportIcon } from "@/components/ui/bug-report-icon";
 import { CoffeeIcon } from "@/components/ui/coffee";
-import { BadgeAlertIcon } from "@/components/ui/badge-alert";
-import { GithubIcon } from "@/components/ui/github";
 import { BlocksIcon } from "@/components/ui/blocks-icon";
 import { AudioLinesIcon, type AudioLinesIconHandle } from "@/components/ui/audio-lines";
+import { ToolCaseIcon } from "@/components/ui/tool-case";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger, } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { openExternal } from "@/lib/utils";
-export type PageType = "main" | "settings" | "debug" | "audio-analysis" | "audio-converter" | "audio-resampler" | "file-manager" | "about" | "history";
+export type PageType = "main" | "settings" | "debug" | "audio-analysis" | "audio-converter" | "audio-resampler" | "file-manager" | "projects" | "support" | "history";
 interface SidebarProps {
     currentPage: PageType;
     onPageChange: (page: PageType) => void;
@@ -100,7 +100,7 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
                         <DropdownMenuTrigger asChild>
                             <TooltipTrigger asChild>
                                 <Button variant={["audio-analysis", "audio-converter", "audio-resampler", "file-manager"].includes(currentPage) ? "secondary" : "ghost"} size="icon" className={`h-10 w-10 ${["audio-analysis", "audio-converter", "audio-resampler", "file-manager"].includes(currentPage) ? "bg-primary/10 text-primary hover:bg-primary/20" : "hover:bg-primary/10 hover:text-primary"}`}>
-                                    <BlocksIcon size={20} loop={true}/>
+                                    <ToolCaseIcon size={20}/>
                                 </Button>
                             </TooltipTrigger>
                         </DropdownMenuTrigger>
@@ -134,7 +134,7 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
                     <Tooltip delayDuration={0}>
                         <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-10 w-10 hover:bg-primary/10 hover:text-primary" onClick={() => setIsIssuesDialogOpen(true)}>
-                                <GithubIcon size={20}/>
+                                <BugReportIcon size={20} loop={true}/>
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent side="right">
@@ -176,23 +176,23 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
 
                 <Tooltip delayDuration={0}>
                     <TooltipTrigger asChild>
-                        <Button variant={currentPage === "about" ? "secondary" : "ghost"} size="icon" className={`h-10 w-10 ${currentPage === "about" ? "bg-primary/10 text-primary hover:bg-primary/20" : "hover:bg-primary/10 hover:text-primary"}`} onClick={() => onPageChange("about")}>
-                            <BadgeAlertIcon size={20}/>
+                        <Button variant={currentPage === "projects" ? "secondary" : "ghost"} size="icon" className={`h-10 w-10 ${currentPage === "projects" ? "bg-primary/10 text-primary hover:bg-primary/20" : "hover:bg-primary/10 hover:text-primary"}`} onClick={() => onPageChange("projects")}>
+                            <BlocksIcon size={20} loop={true}/>
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent side="right">
-                        <p>About</p>
+                        <p>Other Projects</p>
                     </TooltipContent>
                 </Tooltip>
 
                 <Tooltip delayDuration={0}>
                     <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-10 w-10 hover:bg-primary/10 hover:text-primary" onClick={() => openExternal("https://ko-fi.com/afkarxyz")}>
+                        <Button variant={currentPage === "support" ? "secondary" : "ghost"} size="icon" className={`h-10 w-10 ${currentPage === "support" ? "bg-primary/10 text-primary hover:bg-primary/20" : "hover:bg-primary/10 hover:text-primary"}`} onClick={() => onPageChange("support")}>
                             <CoffeeIcon size={20} loop={true}/>
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent side="right">
-                        <p>Support me on Ko-fi</p>
+                        <p>Support Me</p>
                     </TooltipContent>
                 </Tooltip>
             </div>
