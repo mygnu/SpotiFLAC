@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SpotiFLAC
+Comment=Get Spotify tracks in true FLAC from Tidal, Qobuz & Amazon Music
+Exec=/usr/bin/SpotiFLAC
+Icon=spotiflac
+Terminal=false
+Categories=AudioVideo;Audio;
+StartupWMClass=SpotiFLAC

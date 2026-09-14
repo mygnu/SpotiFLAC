@@ -1,0 +1,30 @@
+name: spotiflac
+arch: amd64
+platform: linux
+version: "${VERSION}"
+release: "1"
+section: sound
+priority: optional
+maintainer: afkarxyz <afkarxyz@github.com>
+description: |
+  Get Spotify tracks in true FLAC from Tidal, Qobuz & Amazon Music.
+
+  SpotiFLAC downloads Spotify tracks in lossless FLAC audio quality
+  from multiple sources including Tidal, Qobuz, and Amazon Music.
+license: MIT
+homepage: https://github.com/afkarxyz/SpotiFLAC
+contents:
+  - src: ./build/bin/SpotiFLAC
+    dst: /usr/bin/SpotiFLAC
+    file_info:
+      mode: 0755
+  - src: ./packaging/linux/spotiflac.desktop
+    dst: /usr/share/applications/spotiflac.desktop
+  - src: ./build/appicon.png
+    dst: /usr/share/icons/hicolor/1024x1024/apps/spotiflac.png
+  - src: ./LICENSE
+    dst: /usr/share/doc/spotiflac/LICENSE
+
+deb:
+  fields:
+    Homepage: https://github.com/afkarxyz/SpotiFLAC
