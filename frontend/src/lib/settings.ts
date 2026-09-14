@@ -1,4 +1,7 @@
 import { GetDefaults, LoadFonts as LoadFontsFromBackend, LoadSettings, SaveFonts as SaveFontsToBackend, SaveSettings as SaveToBackend, } from "../../wailsjs/go/main/App";
+import { getFirstArtist } from "./utils";
+import { isAppLanguage, t, type AppLanguage } from "@/i18n";
+import { normalizeBaseColorName, normalizeThemeName, type BaseColorName, type ThemeName } from "./themes";
 export type BuiltInFontFamily = "google-sans" | "inter" | "poppins" | "roboto" | "dm-sans" | "plus-jakarta-sans" | "manrope" | "space-grotesk" | "noto-sans" | "nunito-sans" | "figtree" | "raleway" | "public-sans" | "outfit" | "jetbrains-mono" | "geist-sans" | "bricolage-grotesque";
 export type CustomFontFamily = `custom-${string}`;
 export type FontFamily = BuiltInFontFamily | CustomFontFamily;
@@ -16,53 +19,97 @@ export type FontOption = {
 };
 export type FolderPreset = "none" | "artist" | "album" | "year-album" | "year-artist-album" | "artist-album" | "artist-year-album" | "artist-year-nested-album" | "album-artist" | "album-artist-album" | "album-artist-year-album" | "album-artist-year-nested-album" | "year" | "year-artist" | "custom";
 export type FilenamePreset = "title" | "title-artist" | "artist-title" | "track-title" | "track-title-artist" | "track-artist-title" | "title-album-artist" | "track-title-album-artist" | "artist-album-title" | "track-dash-title" | "disc-track-title" | "disc-track-title-artist" | "custom";
-export type ExistingFileCheckMode = "filename" | "isrc";
+export type ExistingFileCheckMode = "filename" | "isrc" | "hybrid";
+export interface MetadataTagToggles {
+    title: boolean;
+    artist: boolean;
+    album: boolean;
+    albumArtist: boolean;
+    date: boolean;
+    trackNumber: boolean;
+    discNumber: boolean;
+    genre: boolean;
+    composer: boolean;
+    copyright: boolean;
+    label: boolean;
+    isrc: boolean;
+    upc: boolean;
+    comment: boolean;
+}
 export interface Settings {
     downloadPath: string;
+    language: AppLanguage;
     downloader: "auto" | "tidal" | "qobuz" | "amazon";
     customTidalApi: string;
+    customQobuzApi: string;
     linkResolver: "songstats" | "songlink";
     allowResolverFallback: boolean;
-    theme: string;
+    baseColor: BaseColorName;
+    theme: ThemeName;
     themeMode: "auto" | "light" | "dark";
     fontFamily: FontFamily;
     customFonts: CustomFontOption[];
     folderPreset: FolderPreset;
     folderTemplate: string;
+    applyFolderToSingleTrack: boolean;
     filenamePreset: FilenamePreset;
     filenameTemplate: string;
+    albumFilenameTemplate: string;
+    useSeparateAlbumFilename: boolean;
     filenameFormat?: "title-artist" | "artist-title" | "title";
     artistSubfolder?: boolean;
     albumSubfolder?: boolean;
     trackNumber: boolean;
     sfxEnabled: boolean;
     embedLyrics: boolean;
+    lyricsTranslationMode: "off" | "chatgpt" | "gemini";
+    lyricsTranslationLang: string;
+    lyricsTranslationAutoFallback: boolean;
+    lrclibTitleFallback: boolean;
     embedMaxQualityCover: boolean;
     operatingSystem: "Windows" | "linux/MacOS";
-    tidalQuality: "LOSSLESS" | "HI_RES_LOSSLESS";
+    tidalQuality: "LOSSLESS" | "HI_RES_LOSSLESS" | "ATMOS";
     qobuzQuality: "6" | "7" | "27";
-    amazonQuality: "original";
+    amazonQuality: "16" | "24" | "atmos";
     autoOrder: "tidal-qobuz-amazon" | "tidal-amazon-qobuz" | "qobuz-tidal-amazon" | "qobuz-amazon-tidal" | "amazon-tidal-qobuz" | "amazon-qobuz-tidal" | string;
-    autoQuality: "16" | "24";
+    autoQuality: "16" | "24" | "atmos";
     allowFallback: boolean;
+    allowAtmosFallback: boolean;
+    atmosFallbackQuality: "16" | "24";
     createPlaylistFolder: boolean;
     playlistOwnerFolderName: boolean;
     createM3u8File: boolean;
+    saveCover: boolean;
+    exportLogsFile: boolean;
+    exportLogsOnlyFailed: boolean;
+    showUpdateNotifications: boolean;
     previewVolume: number;
     existingFileCheckMode: ExistingFileCheckMode;
+    autoConvertAudio: boolean;
+    autoConvertFormat: "mp3" | "m4a-aac" | "m4a-alac" | "wav" | "aiff" | "opus";
+    autoConvertBitrate: "320k" | "256k" | "192k" | "128k";
+    autoConvertDeleteOriginal: boolean;
+    autoResampleAudio: boolean;
+    autoResampleSampleRate: "44100" | "48000" | "96000" | "192000";
+    autoResampleBitDepth: "16" | "24";
+    autoResampleDeleteOriginal: boolean;
+    autoReplayGainTags: boolean;
+    autoReplayGainMode: "track" | "album";
     useFirstArtistOnly: boolean;
     useSingleGenre: boolean;
     embedGenre: boolean;
     redownloadWithSuffix: boolean;
     separator: "comma" | "semicolon";
+    metadataDateFormat: "full" | "year";
+    metadataTags: MetadataTagToggles;
 }
 export const FOLDER_PRESETS: Record<FolderPreset, {
     label: string;
     template: string;
 }> = {
     none: { label: "No Subfolder", template: "" },
-    artist: { label: "Artist", template: "{artist}" },
-    album: { label: "Album", template: "{album}" },
+    artist: { label: t("translation.common.artist"), template: "{artist}" },
+    album: { label: t("translation.common.album"), template: "{album}" },
     "year-album": { label: "[Year] Album", template: "[{year}] {album}" },
     "year-artist-album": {
         label: "[Year] Artist - Album",
@@ -77,7 +124,7 @@ export const FOLDER_PRESETS: Record<FolderPreset, {
         label: "Artist / Year / Album",
         template: "{artist}/{year}/{album}",
     },
-    "album-artist": { label: "Album Artist", template: "{album_artist}" },
+    "album-artist": { label: t("translation.common.albumArtist"), template: "{album_artist}" },
     "album-artist-album": {
         label: "Album Artist / Album",
         template: "{album_artist}/{album}",
@@ -90,7 +137,7 @@ export const FOLDER_PRESETS: Record<FolderPreset, {
         label: "Album Artist / Year / Album",
         template: "{album_artist}/{year}/{album}",
     },
-    year: { label: "Year", template: "{year}" },
+    year: { label: t("translation.fileManager.year"), template: "{year}" },
     "year-artist": { label: "Year / Artist", template: "{year}/{artist}" },
     custom: { label: "Custom...", template: "{artist}/{album}" },
 };
@@ -98,7 +145,7 @@ export const FILENAME_PRESETS: Record<FilenamePreset, {
     label: string;
     template: string;
 }> = {
-    title: { label: "Title", template: "{title}" },
+    title: { label: t("translation.common.title"), template: "{title}" },
     "title-artist": { label: "Title - Artist", template: "{title} - {artist}" },
     "artist-title": { label: "Artist - Title", template: "{artist} - {title}" },
     "track-title": { label: "Track. Title", template: "{track}. {title}" },
@@ -133,28 +180,44 @@ export const FILENAME_PRESETS: Record<FilenamePreset, {
     },
     custom: { label: "Custom...", template: "{title} - {artist}" },
 };
-export const TEMPLATE_VARIABLES = [
-    { key: "{title}", description: "Track title", example: "Shake It Off" },
-    { key: "{artist}", description: "Track artist", example: "Taylor Swift" },
-    { key: "{album}", description: "Album name", example: "1989" },
-    {
-        key: "{album_artist}",
-        description: "Album artist",
-        example: "Taylor Swift",
-    },
-    { key: "{track}", description: "Track number", example: "01" },
-    { key: "{disc}", description: "Disc number", example: "1" },
-    { key: "{year}", description: "Release year", example: "2014" },
-    {
-        key: "{date}",
-        description: "Release date (YYYY-MM-DD)",
-        example: "2014-10-27",
-    },
-    {
-        key: "{isrc}",
-        description: "Track ISRC",
-        example: "USUM71412345",
-    },
+export interface TemplateToken {
+    key: string;
+    description: string;
+    example: string;
+}
+export const SAMPLE_TEMPLATE_DATA: TemplateData = {
+    title: "Golden",
+    artist: "HUNTR/X",
+    artists: "HUNTR/X / EJAE / AUDREY NUNA / REI AMI / KPop Demon Hunters Cast",
+    album: "KPop Demon Hunters (Soundtrack from the Netflix Film)",
+    album_artist: "KPop Demon Hunters Cast / HUNTR/X / Saja Boys",
+    category: "Albums",
+    track: 4,
+    total_tracks: 12,
+    disc: 1,
+    total_discs: 1,
+    year: "2025",
+    date: "2025-06-20",
+    isrc: "QZ8BZ2513510",
+    upc: "00602478398346",
+    playlist: "My Playlist",
+};
+export const TEMPLATE_VARIABLES: TemplateToken[] = [
+    { key: "{title}", description: t("translation.common.trackTitle"), example: "Golden" },
+    { key: "{artist}", description: t("translation.settings.primaryArtist"), example: "HUNTR/X" },
+    { key: "{artists}", description: t("translation.settings.allPerformers"), example: "HUNTR/X / EJAE / AUDREY NUNA / REI AMI / KPop Demon Hunters Cast" },
+    { key: "{album}", description: t("translation.common.albumName"), example: "KPop Demon Hunters (Soundtrack from the Netflix Film)" },
+    { key: "{album_artist}", description: t("translation.common.albumArtist2"), example: "KPop Demon Hunters Cast / HUNTR/X / Saja Boys" },
+    { key: "{track}", description: t("translation.common.trackNumber"), example: "04" },
+    { key: "{total_tracks}", description: t("translation.settings.totalTracksAlbum"), example: "12" },
+    { key: "{disc}", description: t("translation.common.discNumber"), example: "1" },
+    { key: "{total_discs}", description: t("translation.settings.totalDiscsAlbum"), example: "1" },
+    { key: "{year}", description: t("translation.common.releaseYear"), example: "2025" },
+    { key: "{date}", description: t("translation.settings.releaseDateYyyyMmDd"), example: "2025-06-20" },
+    { key: "{isrc}", description: t("translation.common.trackIsrc"), example: "QZ8BZ2513510" },
+    { key: "{upc}", description: t("translation.common.albumUpcBarcode"), example: "00602478398346" },
+    { key: "{category}", description: t("translation.settings.releaseCategory"), example: "Albums" },
+    { key: "{playlist}", description: t("translation.settings.playlistName"), example: "My Playlist" },
 ];
 function detectOS(): "Windows" | "linux/MacOS" {
     const platform = window.navigator.platform.toLowerCase();
@@ -165,124 +228,167 @@ function detectOS(): "Windows" | "linux/MacOS" {
 }
 export const DEFAULT_SETTINGS: Settings = {
     downloadPath: "",
+    language: "en",
     downloader: "auto",
     customTidalApi: "",
+    customQobuzApi: "",
     linkResolver: "songlink",
     allowResolverFallback: true,
+    baseColor: "neutral",
     theme: "yellow",
     themeMode: "auto",
     fontFamily: "google-sans",
     customFonts: [],
     folderPreset: "none",
-    folderTemplate: "",
+    folderTemplate: "{album_artist}/{album}",
+    applyFolderToSingleTrack: false,
     filenamePreset: "title-artist",
-    filenameTemplate: "{title} - {artist}",
+    filenameTemplate: "{artist} - {title}",
+    albumFilenameTemplate: "{track}. {title}",
+    useSeparateAlbumFilename: false,
     trackNumber: false,
     sfxEnabled: true,
     embedLyrics: false,
+    lyricsTranslationMode: "off",
+    lyricsTranslationLang: "en",
+    lyricsTranslationAutoFallback: true,
+    lrclibTitleFallback: true,
     embedMaxQualityCover: false,
     operatingSystem: detectOS(),
     tidalQuality: "LOSSLESS",
     qobuzQuality: "6",
-    amazonQuality: "original",
-    autoOrder: "qobuz-amazon",
+    amazonQuality: "16",
+    autoOrder: "tidal-qobuz-amazon",
     autoQuality: "16",
     allowFallback: true,
+    allowAtmosFallback: true,
+    atmosFallbackQuality: "24",
     createPlaylistFolder: true,
     playlistOwnerFolderName: false,
     createM3u8File: false,
+    saveCover: false,
+    exportLogsFile: true,
+    exportLogsOnlyFailed: false,
+    showUpdateNotifications: true,
     previewVolume: 100,
     existingFileCheckMode: "filename",
+    autoConvertAudio: false,
+    autoConvertFormat: "mp3",
+    autoConvertBitrate: "320k",
+    autoConvertDeleteOriginal: false,
+    autoResampleAudio: false,
+    autoResampleSampleRate: "44100",
+    autoResampleBitDepth: "16",
+    autoResampleDeleteOriginal: false,
+    autoReplayGainTags: false,
+    autoReplayGainMode: "album",
     useFirstArtistOnly: false,
     useSingleGenre: false,
     embedGenre: false,
     redownloadWithSuffix: false,
     separator: "semicolon",
+    metadataDateFormat: "full",
+    metadataTags: {
+        title: true,
+        artist: true,
+        album: true,
+        albumArtist: true,
+        date: true,
+        trackNumber: true,
+        discNumber: true,
+        genre: true,
+        composer: true,
+        copyright: true,
+        label: true,
+        isrc: true,
+        upc: true,
+        comment: true,
+    },
 };
 export const FONT_OPTIONS: FontOption[] = [
     {
         value: "bricolage-grotesque",
-        label: "Bricolage Grotesque",
+        label: t("literal.settings.bricolageGrotesque"),
         fontFamily: '"Bricolage Grotesque", system-ui, sans-serif',
     },
     {
         value: "dm-sans",
-        label: "DM Sans",
+        label: t("literal.settings.dmSans"),
         fontFamily: '"DM Sans", system-ui, sans-serif',
     },
     {
         value: "figtree",
-        label: "Figtree",
+        label: t("literal.settings.figtree"),
         fontFamily: '"Figtree", system-ui, sans-serif',
     },
     {
         value: "geist-sans",
-        label: "Geist Sans",
+        label: t("literal.settings.geistSans"),
         fontFamily: '"Geist", system-ui, sans-serif',
     },
     {
         value: "google-sans",
-        label: "Google Sans",
+        label: t("literal.settings.googleSans"),
         fontFamily: '"Google Sans", system-ui, sans-serif',
     },
     {
         value: "inter",
-        label: "Inter",
+        label: t("literal.settings.inter"),
         fontFamily: '"Inter", system-ui, sans-serif',
     },
     {
         value: "jetbrains-mono",
-        label: "JetBrains Mono",
+        label: t("literal.settings.jetbrainsMono"),
         fontFamily: '"JetBrains Mono", ui-monospace, monospace',
     },
     {
         value: "manrope",
-        label: "Manrope",
+        label: t("literal.settings.manrope"),
         fontFamily: '"Manrope", system-ui, sans-serif',
     },
     {
         value: "noto-sans",
-        label: "Noto Sans",
+        label: t("literal.settings.notoSans"),
         fontFamily: '"Noto Sans", system-ui, sans-serif',
     },
     {
         value: "nunito-sans",
-        label: "Nunito Sans",
+        label: t("literal.settings.nunitoSans"),
         fontFamily: '"Nunito Sans", system-ui, sans-serif',
     },
     {
         value: "outfit",
-        label: "Outfit",
+        label: t("literal.settings.outfit"),
         fontFamily: '"Outfit", system-ui, sans-serif',
     },
     {
         value: "plus-jakarta-sans",
-        label: "Plus Jakarta Sans",
+        label: t("literal.settings.plusJakartaSans"),
         fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
     },
     {
         value: "poppins",
-        label: "Poppins",
+        label: t("literal.settings.poppins"),
         fontFamily: '"Poppins", system-ui, sans-serif',
     },
     {
         value: "public-sans",
-        label: "Public Sans",
+        label: t("literal.settings.publicSans"),
         fontFamily: '"Public Sans", system-ui, sans-serif',
     },
     {
         value: "raleway",
-        label: "Raleway",
+        label: t("literal.settings.raleway"),
         fontFamily: '"Raleway", system-ui, sans-serif',
     },
     {
         value: "roboto",
-        label: "Roboto",
+        label: t("literal.settings.roboto"),
         fontFamily: '"Roboto", system-ui, sans-serif',
     },
     {
         value: "space-grotesk",
-        label: "Space Grotesk",
+        label: t("literal.settings.spaceGrotesk"),
         fontFamily: '"Space Grotesk", system-ui, sans-serif',
     },
 ];
@@ -524,11 +630,17 @@ function normalizeCustomTidalApi(value: unknown): string {
 export function hasConfiguredCustomTidalApi(value: unknown): boolean {
     return normalizeCustomTidalApi(value).startsWith("https://");
 }
-export function sanitizeAutoOrder(order: unknown, allowTidal: boolean): string {
-    const allowedServices = allowTidal
-        ? new Set(["tidal", "qobuz", "amazon"])
-        : new Set(["qobuz", "amazon"]);
-    const fallbackOrder = allowTidal ? "tidal-qobuz-amazon" : "qobuz-amazon";
+function normalizeCustomQobuzApi(value: unknown): string {
+    return typeof value === "string"
+        ? value.trim().replace(/\/+$/g, "")
+        : "";
+}
+export function hasConfiguredCustomQobuzApi(value: unknown): boolean {
+    return normalizeCustomQobuzApi(value).startsWith("https://");
+}
+export function sanitizeAutoOrder(order: unknown): string {
+    const allowedServices = new Set(["tidal", "qobuz", "amazon"]);
+    const fallbackOrder = "tidal-qobuz-amazon";
     if (typeof order !== "string") {
         return fallbackOrder;
     }
@@ -538,27 +650,38 @@ export function sanitizeAutoOrder(order: unknown, allowTidal: boolean): string {
         .filter((part, index, parts) => part !== "" && allowedServices.has(part) && parts.indexOf(part) === index);
     return normalized.length >= 2 ? normalized.join("-") : fallbackOrder;
 }
-function normalizeDownloader(value: unknown, allowTidal: boolean): Settings["downloader"] {
+function normalizeDownloader(value: unknown): Settings["downloader"] {
     const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-    if (normalized === "tidal") {
-        return allowTidal ? "tidal" : "auto";
-    }
-    if (normalized === "qobuz" || normalized === "amazon" || normalized === "auto") {
+    if (normalized === "tidal" || normalized === "qobuz" || normalized === "amazon" || normalized === "auto") {
         return normalized;
     }
     return DEFAULT_SETTINGS.downloader;
+}
+function normalizeLyricsTranslationMode(value: unknown): Settings["lyricsTranslationMode"] {
+    switch (typeof value === "string" ? value.trim().toLowerCase() : "") {
+        case "chatgpt":
+            return "chatgpt";
+        case "gemini":
+            return "gemini";
+        default:
+            return "off";
+    }
 }
 function normalizeExistingFileCheckMode(mode: unknown): ExistingFileCheckMode {
     switch (typeof mode === "string" ? mode.trim().toLowerCase() : "") {
         case "isrc":
         case "upc":
             return "isrc";
+        case "hybrid":
+            return "hybrid";
         default:
             return "filename";
     }
 }
 function normalizeSettingsPayload(settings: SettingsPayload): SettingsPayload {
     const normalized: SettingsPayload = { ...settings };
+    normalized.baseColor = normalizeBaseColorName(settings.baseColor);
+    normalized.theme = normalizeThemeName(settings.theme, normalized.baseColor);
     if ("darkMode" in normalized && !("themeMode" in normalized)) {
         normalized.themeMode = normalized.darkMode ? "dark" : "light";
         delete normalized.darkMode;
@@ -607,7 +730,10 @@ function normalizeSettingsPayload(settings: SettingsPayload): SettingsPayload {
         normalized.qobuzQuality = "6";
     }
     if (!("amazonQuality" in normalized)) {
-        normalized.amazonQuality = "original";
+        normalized.amazonQuality = "16";
+    }
+    if (normalized.amazonQuality !== "16" && normalized.amazonQuality !== "24" && normalized.amazonQuality !== "atmos") {
+        normalized.amazonQuality = "16";
     }
     if (!("autoOrder" in normalized)) {
         normalized.autoOrder = DEFAULT_SETTINGS.autoOrder;
@@ -615,12 +741,28 @@ function normalizeSettingsPayload(settings: SettingsPayload): SettingsPayload {
     if (!("autoQuality" in normalized)) {
         normalized.autoQuality = "16";
     }
+    if (normalized.autoQuality !== "16" && normalized.autoQuality !== "24" && normalized.autoQuality !== "atmos") {
+        normalized.autoQuality = "16";
+    }
+    if (normalized.autoQuality === "atmos" && sanitizeAutoOrder(normalized.autoOrder).includes("qobuz")) {
+        normalized.autoQuality = "24";
+    }
     normalized.customTidalApi = normalizeCustomTidalApi(normalized.customTidalApi);
-    const allowTidal = hasConfiguredCustomTidalApi(normalized.customTidalApi);
-    normalized.downloader = normalizeDownloader(normalized.downloader, allowTidal);
-    normalized.autoOrder = sanitizeAutoOrder(normalized.autoOrder, allowTidal);
+    normalized.customQobuzApi = normalizeCustomQobuzApi(normalized.customQobuzApi);
+    normalized.downloader = normalizeDownloader(normalized.downloader);
+    normalized.lyricsTranslationMode = normalizeLyricsTranslationMode(normalized.lyricsTranslationMode);
+    normalized.autoOrder = sanitizeAutoOrder(normalized.autoOrder);
+    if (typeof normalized.lyricsTranslationAutoFallback !== "boolean") {
+        normalized.lyricsTranslationAutoFallback = true;
+    }
     if (!("allowFallback" in normalized)) {
         normalized.allowFallback = true;
+    }
+    if (!("allowAtmosFallback" in normalized)) {
+        normalized.allowAtmosFallback = true;
+    }
+    if (normalized.atmosFallbackQuality !== "16" && normalized.atmosFallbackQuality !== "24") {
+        normalized.atmosFallbackQuality = "24";
     }
     if (!("linkResolver" in normalized)) {
         normalized.linkResolver = "songlink";
@@ -637,8 +779,13 @@ function normalizeSettingsPayload(settings: SettingsPayload): SettingsPayload {
     if (!("createM3u8File" in normalized)) {
         normalized.createM3u8File = false;
     }
+    normalized.showUpdateNotifications = typeof settings.showUpdateNotifications === "boolean" ? settings.showUpdateNotifications : true;
     normalized.previewVolume = normalizePreviewVolume(normalized.previewVolume);
     normalized.existingFileCheckMode = normalizeExistingFileCheckMode(normalized.existingFileCheckMode);
+    normalized.autoReplayGainTags = typeof normalized.autoReplayGainTags === "boolean"
+        ? normalized.autoReplayGainTags
+        : DEFAULT_SETTINGS.autoReplayGainTags;
+    normalized.autoReplayGainMode = normalized.autoReplayGainMode === "track" ? "track" : "album";
     if (!("useFirstArtistOnly" in normalized)) {
         normalized.useFirstArtistOnly = false;
     }
@@ -654,6 +801,17 @@ function normalizeSettingsPayload(settings: SettingsPayload): SettingsPayload {
     if (!("redownloadWithSuffix" in normalized)) {
         normalized.redownloadWithSuffix = false;
     }
+    normalized.metadataDateFormat = settings.metadataDateFormat === "year" ? "year" : "full";
+    const metadataTags: MetadataTagToggles = { ...DEFAULT_SETTINGS.metadataTags };
+    if (normalized.metadataTags && typeof normalized.metadataTags === "object") {
+        const rawTags = normalized.metadataTags as Partial<MetadataTagToggles>;
+        for (const key of Object.keys(metadataTags) as Array<keyof MetadataTagToggles>) {
+            if (typeof rawTags[key] === "boolean") {
+                metadataTags[key] = rawTags[key];
+            }
+        }
+    }
+    normalized.metadataTags = metadataTags;
     normalized.operatingSystem = detectOS();
     const normalizedCustomFonts = normalizeCustomFonts(normalized.customFonts);
     normalized.customFonts = normalizedCustomFonts;
@@ -661,10 +819,12 @@ function normalizeSettingsPayload(settings: SettingsPayload): SettingsPayload {
     return normalized;
 }
 function toNormalizedSettings(settings: SettingsPayload): Settings {
-    return {
+    const normalized = {
         ...DEFAULT_SETTINGS,
         ...keepKnownSettings(normalizeSettingsPayload(settings)),
     } as Settings;
+    normalized.language = isAppLanguage(normalized.language) ? normalized.language : DEFAULT_SETTINGS.language;
+    return normalized;
 }
 async function persistSettingsInternal(settings: Settings, notify = true): Promise<void> {
     cachedSettings = settings;
@@ -742,12 +902,17 @@ export async function loadSettings(): Promise<Settings> {
 }
 export interface TemplateData {
     artist?: string;
+    artists?: string;
     album?: string;
     album_artist?: string;
+    category?: string;
     title?: string;
     isrc?: string;
+    upc?: string;
     track?: number;
+    total_tracks?: number;
     disc?: number;
+    total_discs?: number;
     year?: string;
     date?: string;
     playlist?: string;
@@ -757,17 +922,57 @@ export function parseTemplate(template: string, data: TemplateData): string {
         return "";
     }
     let result = template;
+    result = result.replace(/\{track_number\}/g, "{track}");
+    result = result.replace(/\{disc_number\}/g, "{disc}");
     result = result.replace(/\{title\}/g, data.title || "Unknown Title");
-    result = result.replace(/\{artist\}/g, data.artist || "Unknown Artist");
+    result = result.replace(/\{artists\}/g, data.artists || data.artist || "Unknown Artist");
+    result = result.replace(/\{artist\}/g, getFirstArtist(data.artist || "") || "Unknown Artist");
+    result = result.replace(/\{album_artist\}/g, getFirstArtist(data.album_artist || data.artist || "") || "Unknown Artist");
     result = result.replace(/\{album\}/g, data.album || "Unknown Album");
-    result = result.replace(/\{album_artist\}/g, data.album_artist || data.artist || "Unknown Artist");
+    result = result.replace(/\{category\}/g, data.category || "");
     result = result.replace(/\{isrc\}/g, data.isrc || "");
+    result = result.replace(/\{upc\}/g, data.upc || "");
     result = result.replace(/\{track\}/g, data.track ? String(data.track).padStart(2, "0") : "00");
+    result = result.replace(/\{total_tracks\}/g, data.total_tracks ? String(data.total_tracks) : "");
     result = result.replace(/\{disc\}/g, data.disc ? String(data.disc) : "1");
+    result = result.replace(/\{total_discs\}/g, data.total_discs ? String(data.total_discs) : "");
     result = result.replace(/\{year\}/g, data.year || "0000");
     result = result.replace(/\{date\}/g, data.date || "0000-00-00");
     result = result.replace(/\{playlist\}/g, data.playlist || "");
     return result;
+}
+export function getAlbumCategoryLabel(albumType?: string): string {
+    switch ((albumType || "").trim().toLowerCase()) {
+        case "album":
+            return "Albums";
+        case "live":
+            return "Live Albums";
+        case "compilation":
+            return "Compilations";
+        case "single":
+        case "ep":
+        case "epsingle":
+        case "appears_on":
+            return "Singles & EPs";
+        case "other":
+            return "Other Releases";
+        default:
+            return "";
+    }
+}
+export function getEffectiveAlbumFilenameTemplate(settings: Pick<Settings, "filenameTemplate" | "albumFilenameTemplate" | "useSeparateAlbumFilename">): string {
+    return settings.useSeparateAlbumFilename ? settings.albumFilenameTemplate : settings.filenameTemplate;
+}
+export function templateUsesAlbumTrackNumber(templates: {
+    folderTemplate?: string;
+    filenameTemplate?: string;
+    albumFilenameTemplate?: string;
+    useSeparateAlbumFilename?: boolean;
+}): boolean {
+    const folderTemplate = templates.folderTemplate || "";
+    const filenameTemplate = templates.filenameTemplate || "";
+    const albumFilenameTemplate = templates.useSeparateAlbumFilename ? (templates.albumFilenameTemplate || "") : "";
+    return ["{album}", "{album_artist}"].some((token) => folderTemplate.includes(token) || filenameTemplate.includes(token) || albumFilenameTemplate.includes(token));
 }
 export async function getSettingsWithDefaults(): Promise<Settings> {
     const settings = await loadSettings();

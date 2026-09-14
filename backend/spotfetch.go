@@ -10,17 +10,27 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	"sort"
 )
 
 var SpotifyError = errors.New("spotify error")
 
+const spotifyAccessTokenCacheSkew = 30 * time.Second
+
+var spotifyAccessTokenCache = struct {
+	sync.Mutex
+	accessToken string
+	clientID    string
+	expiresAt   time.Time
+}{}
+
 type SpotifyClient struct {
 	client        *http.Client
+	mu            sync.Mutex
 	accessToken   string
 	clientToken   string
 	clientID      string
@@ -40,15 +50,15 @@ func (c *SpotifyClient) generateTOTP() (string, int, error) {
 	return generateSpotifyTOTP(time.Now())
 }
 
-func (c *SpotifyClient) getAccessToken() error {
-	totpCode, version, err := c.generateTOTP()
+func (c *SpotifyClient) requestAccessTokenAt(now time.Time) (map[string]interface{}, []*http.Cookie, error) {
+	totpCode, version, err := generateSpotifyTOTP(now)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	req, err := http.NewRequest("GET", "https://open.spotify.com/api/token", nil)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	q := req.URL.Query()
@@ -64,30 +74,106 @@ func (c *SpotifyClient) getAccessToken() error {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("%w: access token request failed: HTTP %d", SpotifyError, resp.StatusCode)
+		details := strings.TrimSpace(string(body))
+		if len(details) > 200 {
+			details = details[:200]
+		}
+		if details != "" {
+			details = " | " + details
+		}
+		return nil, nil, fmt.Errorf("%w: access token request failed: HTTP %d%s", SpotifyError, resp.StatusCode, details)
 	}
 
 	var data map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return err
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, nil, err
 	}
 
-	c.accessToken = getString(data, "accessToken")
-	c.clientID = getString(data, "clientId")
+	return data, resp.Cookies(), nil
+}
 
-	for _, cookie := range resp.Cookies() {
-		if cookie.Name == "sp_t" {
-			c.deviceID = cookie.Value
+func spotifyAccessTokenExpiresAt(data map[string]interface{}) time.Time {
+	if expiresAtMs := getFloat64(data, "accessTokenExpirationTimestampMs"); expiresAtMs > 0 {
+		return time.UnixMilli(int64(expiresAtMs))
+	}
+
+	return time.Now().Add(55 * time.Minute)
+}
+
+func spotifyCachedAccessTokenValid(now time.Time) bool {
+	return spotifyAccessTokenCache.accessToken != "" &&
+		spotifyAccessTokenCache.clientID != "" &&
+		now.Before(spotifyAccessTokenCache.expiresAt.Add(-spotifyAccessTokenCacheSkew))
+}
+
+func invalidateSpotifyAccessTokenCache() {
+	spotifyAccessTokenCache.Lock()
+	defer spotifyAccessTokenCache.Unlock()
+	spotifyAccessTokenCache.accessToken = ""
+	spotifyAccessTokenCache.clientID = ""
+	spotifyAccessTokenCache.expiresAt = time.Time{}
+}
+
+func (c *SpotifyClient) getAccessToken() error {
+	spotifyAccessTokenCache.Lock()
+	defer spotifyAccessTokenCache.Unlock()
+
+	if spotifyCachedAccessTokenValid(time.Now()) {
+		c.accessToken = spotifyAccessTokenCache.accessToken
+		c.clientID = spotifyAccessTokenCache.clientID
+		return nil
+	}
+
+	totpWindows := []time.Duration{0, -30 * time.Second, 30 * time.Second}
+	var lastErr error
+	for attempt, offset := range totpWindows {
+		data, cookies, err := c.requestAccessTokenAt(time.Now().Add(offset))
+		if err != nil {
+			lastErr = err
+			if attempt < len(totpWindows)-1 {
+				time.Sleep(400 * time.Millisecond)
+			}
+			continue
 		}
-		c.cookies[cookie.Name] = cookie.Value
+
+		accessToken := getString(data, "accessToken")
+		clientID := getString(data, "clientId")
+		if accessToken == "" || clientID == "" {
+			lastErr = fmt.Errorf("%w: access token response did not include required fields", SpotifyError)
+			continue
+		}
+
+		c.accessToken = accessToken
+		c.clientID = clientID
+
+		spotifyAccessTokenCache.accessToken = accessToken
+		spotifyAccessTokenCache.clientID = clientID
+		spotifyAccessTokenCache.expiresAt = spotifyAccessTokenExpiresAt(data)
+
+		for _, cookie := range cookies {
+			if cookie.Name == "sp_t" {
+				c.deviceID = cookie.Value
+			}
+			c.cookies[cookie.Name] = cookie.Value
+		}
+
+		return nil
 	}
 
-	return nil
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("%w: access token request failed", SpotifyError)
 }
 
 func (c *SpotifyClient) getSessionInfo() error {
@@ -204,7 +290,7 @@ func (c *SpotifyClient) getClientToken() error {
 	return nil
 }
 
-func (c *SpotifyClient) Initialize() error {
+func (c *SpotifyClient) initializeLocked() error {
 	if err := c.getSessionInfo(); err != nil {
 		return err
 	}
@@ -214,46 +300,89 @@ func (c *SpotifyClient) Initialize() error {
 	return c.getClientToken()
 }
 
+func (c *SpotifyClient) Initialize() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.initializeLocked()
+}
+
 func (c *SpotifyClient) Query(payload map[string]interface{}) (map[string]interface{}, error) {
+	c.mu.Lock()
 	if c.accessToken == "" || c.clientToken == "" {
-		if err := c.Initialize(); err != nil {
+		if err := c.initializeLocked(); err != nil {
+			c.mu.Unlock()
 			return nil, err
 		}
 	}
+	accessToken := c.accessToken
+	clientToken := c.clientToken
+	clientVersion := c.clientVersion
+	c.mu.Unlock()
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", "https://api-partner.spotify.com/pathfinder/v2/query", bytes.NewBuffer(jsonData))
+	doRequest := func(accessToken, clientToken, clientVersion string) (int, []byte, error) {
+		req, reqErr := http.NewRequest("POST", "https://api-partner.spotify.com/pathfinder/v2/query", bytes.NewBuffer(jsonData))
+		if reqErr != nil {
+			return 0, nil, reqErr
+		}
+
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Client-Token", clientToken)
+		req.Header.Set("Spotify-App-Version", clientVersion)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
+
+		resp, doErr := c.client.Do(req)
+		if doErr != nil {
+			return 0, nil, doErr
+		}
+		defer resp.Body.Close()
+
+		respBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return 0, nil, readErr
+		}
+		return resp.StatusCode, respBody, nil
+	}
+
+	statusCode, body, err := doRequest(accessToken, clientToken, clientVersion)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-	req.Header.Set("Client-Token", c.clientToken)
-	req.Header.Set("Spotify-App-Version", c.clientVersion)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
+	if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden {
+		c.mu.Lock()
+		if c.accessToken == accessToken && c.clientToken == clientToken {
+			invalidateSpotifyAccessTokenCache()
+			c.accessToken = ""
+			c.clientToken = ""
+			if err := c.initializeLocked(); err != nil {
+				c.mu.Unlock()
+				return nil, err
+			}
+		}
+		accessToken = c.accessToken
+		clientToken = c.clientToken
+		clientVersion = c.clientVersion
+		c.mu.Unlock()
 
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
+		statusCode, body, err = doRequest(accessToken, clientToken, clientVersion)
+		if err != nil {
+			return nil, err
+		}
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != 200 {
+	if statusCode != 200 {
 		errorText := string(body)
 		if len(errorText) > 200 {
 			errorText = errorText[:200]
 		}
-		return nil, fmt.Errorf("%w: API query failed: HTTP %d | %s", SpotifyError, resp.StatusCode, errorText)
+		return nil, fmt.Errorf("%w: API query failed: HTTP %d | %s", SpotifyError, statusCode, errorText)
 	}
 
 	var result map[string]interface{}
@@ -309,6 +438,18 @@ func getBool(m map[string]interface{}, key string) bool {
 	return false
 }
 
+func spotifyIDFromItem(item map[string]interface{}) string {
+	if id := strings.TrimSpace(getString(item, "id")); id != "" {
+		return id
+	}
+
+	uri := strings.TrimSpace(getString(item, "uri"))
+	if separator := strings.LastIndex(uri, ":"); separator >= 0 && separator < len(uri)-1 {
+		return strings.TrimSpace(uri[separator+1:])
+	}
+	return ""
+}
+
 func extractArtists(artistsData map[string]interface{}) []map[string]interface{} {
 	items := getSlice(artistsData, "items")
 
@@ -321,6 +462,9 @@ func extractArtists(artistsData map[string]interface{}) []map[string]interface{}
 		profile := getMap(itemMap, "profile")
 		artistInfo := map[string]interface{}{
 			"name": getString(profile, "name"),
+		}
+		if id := spotifyIDFromItem(itemMap); id != "" {
+			artistInfo["id"] = id
 		}
 		artists = append(artists, artistInfo)
 	}
@@ -483,40 +627,8 @@ func FilterTrack(data map[string]interface{}, separator string, albumFetchData .
 	artists := extractArtists(getMap(trackData, "artists"))
 
 	if len(artists) == 0 {
-		artists = []map[string]interface{}{}
-		firstArtistItems := getSlice(getMap(trackData, "firstArtist"), "items")
-		for _, item := range firstArtistItems {
-			itemMap, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if profile, exists := itemMap["profile"]; exists {
-				profileMap, ok := profile.(map[string]interface{})
-				if ok {
-					artistInfo := map[string]interface{}{
-						"name": getString(profileMap, "name"),
-					}
-					artists = append(artists, artistInfo)
-				}
-			}
-		}
-
-		otherArtistItems := getSlice(getMap(trackData, "otherArtists"), "items")
-		for _, item := range otherArtistItems {
-			itemMap, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if profile, exists := itemMap["profile"]; exists {
-				profileMap, ok := profile.(map[string]interface{})
-				if ok {
-					artistInfo := map[string]interface{}{
-						"name": getString(profileMap, "name"),
-					}
-					artists = append(artists, artistInfo)
-				}
-			}
-		}
+		artists = extractArtists(getMap(trackData, "firstArtist"))
+		artists = append(artists, extractArtists(getMap(trackData, "otherArtists"))...)
 	}
 
 	if len(artists) == 0 {
@@ -695,8 +807,18 @@ func FilterTrack(data map[string]interface{}, separator string, albumFetchData .
 	durationString := getString(durationObj, "formatted")
 
 	artistNames := []string{}
+	artistIDs := []string{}
+	seenArtistIDs := make(map[string]struct{})
 	for _, artist := range artists {
 		artistNames = append(artistNames, getString(artist, "name"))
+		artistID := strings.TrimSpace(getString(artist, "id"))
+		if artistID == "" {
+			continue
+		}
+		if _, exists := seenArtistIDs[artistID]; !exists {
+			seenArtistIDs[artistID] = struct{}{}
+			artistIDs = append(artistIDs, artistID)
+		}
 	}
 	artistsString := strings.Join(artistNames, separator)
 
@@ -771,6 +893,7 @@ func FilterTrack(data map[string]interface{}, separator string, albumFetchData .
 		"id":          getString(trackData, "id"),
 		"name":        getString(trackData, "name"),
 		"artists":     artistsString,
+		"artistIds":   artistIDs,
 		"album":       albumInfo,
 		"duration":    durationString,
 		"track":       int(getFloat64(trackData, "trackNumber")),
@@ -1155,7 +1278,7 @@ func FilterPlaylist(data map[string]interface{}, separator string) map[string]in
 	filtered := map[string]interface{}{
 		"id":          playlistID,
 		"name":        getString(playlistData, "name"),
-		"description": getString(playlistData, "description"),
+		"description": html.UnescapeString(getString(playlistData, "description")),
 		"owner":       ownerInfo,
 		"cover":       cover,
 		"count":       count,

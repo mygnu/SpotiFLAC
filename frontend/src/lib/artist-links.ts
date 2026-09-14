@@ -40,3 +40,6 @@ export function buildClickableArtists(artists: string, artistsData?: ArtistSimpl
         };
     });
 }
+export function getClickableArtistKey(artist: ClickableArtist) {
+    return artist.id || artist.external_urls || artist.name;
+}

@@ -14,9 +14,10 @@ import (
 const songLinkUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 
 var (
-	isrcPattern          = regexp.MustCompile(`\b([A-Z]{2}[A-Z0-9]{3}\d{7})\b`)
-	amazonAlbumTrackPath = regexp.MustCompile(`/albums/[A-Z0-9]{10}/(B[0-9A-Z]{9})`)
-	amazonTrackPath      = regexp.MustCompile(`/tracks/(B[0-9A-Z]{9})`)
+	isrcPattern           = regexp.MustCompile(`\b([A-Z]{2}[A-Z0-9]{3}\d{7})\b`)
+	amazonAlbumTrackPath  = regexp.MustCompile(`/albums/[A-Z0-9]{10}/(B[0-9A-Z]{9})`)
+	amazonTrackPath       = regexp.MustCompile(`/tracks/(B[0-9A-Z]{9})`)
+	songLinkNextDataRegex = regexp.MustCompile(`(?is)<script id="__NEXT_DATA__" type="application/json">(.*?)</script>`)
 )
 
 type SongLinkClient struct {
@@ -41,10 +42,29 @@ type TrackAvailability struct {
 	DeezerURL string `json:"deezer_url,omitempty"`
 }
 
-type songLinkAPIResponse struct {
-	LinksByPlatform map[string]struct {
-		URL string `json:"url"`
-	} `json:"linksByPlatform"`
+type songLinkScrapeResult struct {
+	ISRC      string
+	TidalURL  string
+	AmazonURL string
+	DeezerURL string
+}
+
+type songLinkNextData struct {
+	Props struct {
+		PageProps struct {
+			PageData struct {
+				EntityData struct {
+					ISRC string `json:"isrc"`
+				} `json:"entityData"`
+				Sections []struct {
+					Links []struct {
+						Platform string `json:"platform"`
+						URL      string `json:"url"`
+					} `json:"links"`
+				} `json:"sections"`
+			} `json:"pageData"`
+		} `json:"pageProps"`
+	} `json:"props"`
 }
 
 type qobuzAvailabilityTrack struct {
@@ -332,17 +352,23 @@ func (s *SongLinkClient) GetISRCDirect(spotifyID string) (string, error) {
 	return s.lookupSpotifyISRC(spotifyID)
 }
 
-func (s *SongLinkClient) fetchSongLinkLinksByURL(rawURL string, region string) (*songLinkAPIResponse, error) {
-	apiURL := fmt.Sprintf("https://api.song.link/v1-alpha.1/links?url=%s", url.QueryEscape(rawURL))
+func (s *SongLinkClient) scrapeSongLinkPage(pageURL string, region string) (*songLinkScrapeResult, error) {
 	if region != "" {
-		apiURL += fmt.Sprintf("&userCountry=%s", url.QueryEscape(region))
+		pageURL += fmt.Sprintf("?country=%s", url.QueryEscape(region))
 	}
 
-	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	req, err := http.NewRequest(http.MethodGet, pageURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("User-Agent", songLinkUserAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,id;q=0.8")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Site", "none")
+	req.Header.Set("Sec-Fetch-User", "?1")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -359,20 +385,46 @@ func (s *SongLinkClient) fetchSongLinkLinksByURL(rawURL string, region string) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to read song.link response: %w", err)
 	}
-	if len(body) == 0 {
-		return nil, fmt.Errorf("song.link returned empty response")
+
+	match := songLinkNextDataRegex.FindSubmatch(body)
+	if len(match) < 2 {
+		return nil, fmt.Errorf("song.link __NEXT_DATA__ not found")
 	}
 
-	var parsed songLinkAPIResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		bodyStr := string(body)
-		if len(bodyStr) > 200 {
-			bodyStr = bodyStr[:200] + "..."
+	var parsed songLinkNextData
+	if err := json.Unmarshal(match[1], &parsed); err != nil {
+		return nil, fmt.Errorf("failed to decode song.link __NEXT_DATA__: %w", err)
+	}
+
+	pageData := parsed.Props.PageProps.PageData
+	result := &songLinkScrapeResult{
+		ISRC: strings.ToUpper(strings.TrimSpace(pageData.EntityData.ISRC)),
+	}
+
+	for _, section := range pageData.Sections {
+		for _, link := range section.Links {
+			rawURL := strings.TrimSpace(link.URL)
+			if rawURL == "" {
+				continue
+			}
+			switch link.Platform {
+			case "tidal":
+				if result.TidalURL == "" {
+					result.TidalURL = rawURL
+				}
+			case "amazonMusic":
+				if result.AmazonURL == "" {
+					result.AmazonURL = rawURL
+				}
+			case "deezer":
+				if result.DeezerURL == "" {
+					result.DeezerURL = rawURL
+				}
+			}
 		}
-		return nil, fmt.Errorf("failed to decode song.link response: %w (response: %s)", err, bodyStr)
 	}
 
-	return &parsed, nil
+	return result, nil
 }
 
 func (s *SongLinkClient) lookupDeezerTrackURLByISRC(isrc string) (string, error) {
@@ -413,24 +465,30 @@ func (s *SongLinkClient) lookupDeezerTrackURLByISRC(isrc string) (string, error)
 	return "", fmt.Errorf("deezer track link not found for ISRC %s", isrc)
 }
 
-func mergeSongLinkResponse(links *resolvedTrackLinks, resp *songLinkAPIResponse) {
-	if resp == nil {
+func mergeSongLinkScrape(links *resolvedTrackLinks, data *songLinkScrapeResult) {
+	if data == nil {
 		return
 	}
 
-	if link, ok := resp.LinksByPlatform["tidal"]; ok && link.URL != "" && links.TidalURL == "" {
-		links.TidalURL = strings.TrimSpace(link.URL)
-		fmt.Println("✓ Tidal URL found")
+	if data.TidalURL != "" && links.TidalURL == "" {
+		links.TidalURL = data.TidalURL
+		fmt.Println("Tidal URL found")
 	}
 
-	if link, ok := resp.LinksByPlatform["amazonMusic"]; ok && link.URL != "" && links.AmazonURL == "" {
-		links.AmazonURL = normalizeAmazonMusicURL(link.URL)
-		fmt.Println("✓ Amazon URL found")
+	if data.AmazonURL != "" && links.AmazonURL == "" {
+		if normalized := normalizeAmazonMusicURL(data.AmazonURL); normalized != "" {
+			links.AmazonURL = normalized
+			fmt.Println("Amazon URL found")
+		}
 	}
 
-	if link, ok := resp.LinksByPlatform["deezer"]; ok && link.URL != "" && links.DeezerURL == "" {
-		links.DeezerURL = normalizeDeezerTrackURL(link.URL)
-		fmt.Println("✓ Deezer URL found")
+	if data.DeezerURL != "" && links.DeezerURL == "" {
+		links.DeezerURL = normalizeDeezerTrackURL(data.DeezerURL)
+		fmt.Println("Deezer URL found")
+	}
+
+	if links.ISRC == "" && data.ISRC != "" {
+		links.ISRC = data.ISRC
 	}
 }
 

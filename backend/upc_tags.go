@@ -16,6 +16,30 @@ var ffprobeUPCTagKeys = []string{
 	"----:com.apple.itunes:barcode",
 }
 
+var normalizedUPCTagKeys = []string{
+	preferredUPCTagKey,
+	"BARCODE",
+	"TXXX:UPC",
+	"TXXX:BARCODE",
+	"TXXX/UPC",
+	"TXXX/BARCODE",
+	"WM/UPC",
+	"----:COM.APPLE.ITUNES:UPC",
+	"----:COM.APPLE.ITUNES:BARCODE",
+}
+
+func firstPreferredNormalizedUPCValue(tags map[string][]string) string {
+	for _, key := range normalizedUPCTagKeys {
+		for _, value := range tags[strings.ToUpper(strings.TrimSpace(key))] {
+			if value = strings.TrimSpace(value); value != "" {
+				return value
+			}
+		}
+	}
+
+	return ""
+}
+
 func assignPreferredUPC(current *string, incoming string, preferred bool) {
 	incoming = strings.TrimSpace(incoming)
 	if incoming == "" {

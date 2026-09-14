@@ -149,14 +149,15 @@ func ClearHistory(appName string) error {
 }
 
 type FetchHistoryItem struct {
-	ID        string `json:"id"`
-	URL       string `json:"url"`
-	Type      string `json:"type"`
-	Name      string `json:"name"`
-	Info      string `json:"info"`
-	Image     string `json:"image"`
-	Data      string `json:"data"`
-	Timestamp int64  `json:"timestamp"`
+	ID         string `json:"id"`
+	URL        string `json:"url"`
+	Type       string `json:"type"`
+	Name       string `json:"name"`
+	Info       string `json:"info"`
+	Image      string `json:"image"`
+	Data       string `json:"data"`
+	IsExplicit bool   `json:"is_explicit,omitempty"`
+	Timestamp  int64  `json:"timestamp"`
 }
 
 const (

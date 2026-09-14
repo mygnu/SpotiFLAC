@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger, } from "@/components/ui/tooltip";
 import { openExternal } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/relative-time";
@@ -8,18 +9,19 @@ interface HeaderProps {
     releaseDate?: string | null;
 }
 export function Header({ version, hasUpdate, releaseDate }: HeaderProps) {
+    const { t } = useTranslation();
     return (<div className="relative">
       <div className="text-center space-y-2">
         <div className="flex items-center justify-center gap-3">
-          <img src="/icon.svg" alt="SpotiFLAC" className="w-12 h-12 cursor-pointer" onClick={() => window.location.reload()}/>
-          <h1 className="text-4xl font-bold cursor-pointer" onClick={() => window.location.reload()}>
+          <img src="/icon.svg" alt="" className="w-12 h-12"/>
+          <h1 className="text-4xl font-bold">
             SpotiFLAC
           </h1>
           <div className="relative">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Badge variant="default" asChild>
-                  <button type="button" onClick={() => openExternal("https://github.com/spotbye/SpotiFLAC/releases")} className="cursor-pointer hover:opacity-80 transition-opacity">
+                  <button type="button" onClick={() => openExternal("https://github.com/spotbye/SpotiFLAC/releases/latest")} className="cursor-pointer hover:opacity-80 transition-opacity">
                     v{version}
                   </button>
                 </Badge>
@@ -35,7 +37,7 @@ export function Header({ version, hasUpdate, releaseDate }: HeaderProps) {
           </div>
         </div>
         <p className="text-muted-foreground">
-          Get Spotify tracks in true FLAC from Tidal, Qobuz & Amazon Music — no account required.
+          {t("translation.header.tagline")}
         </p>
       </div>
     </div>);

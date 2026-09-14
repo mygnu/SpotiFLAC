@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -24,17 +23,25 @@ const (
 )
 
 type CoverDownloadRequest struct {
-	CoverURL       string `json:"cover_url"`
-	TrackName      string `json:"track_name"`
-	ArtistName     string `json:"artist_name"`
-	AlbumName      string `json:"album_name"`
-	AlbumArtist    string `json:"album_artist"`
-	ReleaseDate    string `json:"release_date"`
-	OutputDir      string `json:"output_dir"`
-	FilenameFormat string `json:"filename_format"`
-	TrackNumber    bool   `json:"track_number"`
-	Position       int    `json:"position"`
-	DiscNumber     int    `json:"disc_number"`
+	CoverURL            string `json:"cover_url"`
+	TrackName           string `json:"track_name"`
+	ArtistName          string `json:"artist_name"`
+	Artists             string `json:"artists,omitempty"`
+	AlbumName           string `json:"album_name"`
+	AlbumArtist         string `json:"album_artist"`
+	ReleaseDate         string `json:"release_date"`
+	OutputDir           string `json:"output_dir"`
+	FilenameFormat      string `json:"filename_format"`
+	PlaylistName        string `json:"playlist_name,omitempty"`
+	Category            string `json:"category,omitempty"`
+	UPC                 string `json:"upc,omitempty"`
+	ISRC                string `json:"isrc,omitempty"`
+	TrackNumber         bool   `json:"track_number"`
+	Position            int    `json:"position"`
+	DiscNumber          int    `json:"disc_number"`
+	TotalTracks         int    `json:"total_tracks,omitempty"`
+	TotalDiscs          int    `json:"total_discs,omitempty"`
+	UseAlbumTrackNumber bool   `json:"use_album_track_number,omitempty"`
 }
 
 type CoverDownloadResponse struct {
@@ -69,61 +76,13 @@ func NewCoverClient() *CoverClient {
 	}
 }
 
-func buildCoverFilename(trackName, artistName, albumName, albumArtist, releaseDate, filenameFormat string, includeTrackNumber bool, position, discNumber int) string {
-	safeTitle := sanitizeFilename(trackName)
-	safeArtist := sanitizeFilename(artistName)
-	safeAlbum := sanitizeFilename(albumName)
-	safeAlbumArtist := sanitizeFilename(albumArtist)
-
-	year := ""
-	if len(releaseDate) >= 4 {
-		year = releaseDate[:4]
-	}
-
-	var filename string
-
+func buildCoverFilename(trackName, artistName, albumName, albumArtist, releaseDate, filenameFormat, playlistName, isrc, category, upc, artists string, includeTrackNumber bool, position, discNumber, totalTracks, totalDiscs int, useAlbumTrackNumber bool) string {
 	if strings.Contains(filenameFormat, "{") {
-		filename = filenameFormat
-		filename = strings.ReplaceAll(filename, "{title}", safeTitle)
-		filename = strings.ReplaceAll(filename, "{artist}", safeArtist)
-		filename = strings.ReplaceAll(filename, "{album}", safeAlbum)
-		filename = strings.ReplaceAll(filename, "{album_artist}", safeAlbumArtist)
-		filename = strings.ReplaceAll(filename, "{year}", year)
-		filename = strings.ReplaceAll(filename, "{date}", sanitizeFilename(releaseDate))
-
-		if discNumber > 0 {
-			filename = strings.ReplaceAll(filename, "{disc}", fmt.Sprintf("%d", discNumber))
-		} else {
-			filename = strings.ReplaceAll(filename, "{disc}", "")
-		}
-
-		if position > 0 {
-			filename = strings.ReplaceAll(filename, "{track}", fmt.Sprintf("%02d", position))
-		} else {
-
-			filename = regexp.MustCompile(`\{track\}\.\s*`).ReplaceAllString(filename, "")
-			filename = regexp.MustCompile(`\{track\}\s*-\s*`).ReplaceAllString(filename, "")
-			filename = regexp.MustCompile(`\{track\}\s*`).ReplaceAllString(filename, "")
-		}
-	} else {
-
-		switch filenameFormat {
-		case "artist-title":
-			filename = fmt.Sprintf("%s - %s", safeArtist, safeTitle)
-		case "title-artist":
-			filename = fmt.Sprintf("%s - %s", safeTitle, safeArtist)
-		case "title":
-			filename = safeTitle
-		default:
-			filename = fmt.Sprintf("%s - %s", safeTitle, safeArtist)
-		}
-
-		if includeTrackNumber && position > 0 {
-			filename = fmt.Sprintf("%02d - %s", position, filename)
-		}
+		filenameFormat = ApplyExtraFilenameTokens(filenameFormat, artists, totalTracks, totalDiscs)
+		filenameFormat = ApplyFilenameContextTokens(filenameFormat, category, playlistName, "", upc)
 	}
-
-	return filename + ".jpg"
+	base := buildFormattedFilenameBase(trackName, artistName, albumName, albumArtist, releaseDate, filenameFormat, playlistName, "", isrc, includeTrackNumber, position, discNumber, useAlbumTrackNumber)
+	return base + ".jpg"
 }
 
 func convertSmallToMedium(imageURL string) string {
@@ -265,7 +224,7 @@ func (c *CoverClient) DownloadCover(req CoverDownloadRequest) (*CoverDownloadRes
 	if filenameFormat == "" {
 		filenameFormat = "title-artist"
 	}
-	filename := buildCoverFilename(req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, filenameFormat, req.TrackNumber, req.Position, req.DiscNumber)
+	filename := buildCoverFilename(req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, filenameFormat, req.PlaylistName, req.ISRC, req.Category, req.UPC, req.Artists, req.TrackNumber, req.Position, req.DiscNumber, req.TotalTracks, req.TotalDiscs, req.UseAlbumTrackNumber)
 	filePath := filepath.Join(outputDir, filename)
 
 	if fileInfo, err := os.Stat(filePath); err == nil && fileInfo.Size() > 0 {

@@ -19,14 +19,11 @@ func normalizeCustomTidalAPIValue(value interface{}) string {
 	return ""
 }
 
-func sanitizeDownloaderValue(value interface{}, allowTidal bool) string {
+func sanitizeDownloaderValue(value interface{}) string {
 	downloader, _ := value.(string)
 	switch strings.TrimSpace(strings.ToLower(downloader)) {
 	case "tidal":
-		if allowTidal {
-			return "tidal"
-		}
-		return "auto"
+		return "tidal"
 	case "qobuz":
 		return "qobuz"
 	case "amazon":
@@ -36,17 +33,14 @@ func sanitizeDownloaderValue(value interface{}, allowTidal bool) string {
 	}
 }
 
-func sanitizeAutoOrderValue(value interface{}, allowTidal bool) string {
+func sanitizeAutoOrderValue(value interface{}) string {
 	autoOrder, _ := value.(string)
 	allowed := map[string]struct{}{
+		"tidal":  {},
 		"qobuz":  {},
 		"amazon": {},
 	}
-	fallback := "qobuz-amazon"
-	if allowTidal {
-		allowed["tidal"] = struct{}{}
-		fallback = "tidal-qobuz-amazon"
-	}
+	fallback := "tidal-qobuz-amazon"
 
 	seen := make(map[string]struct{})
 	parts := make([]string, 0, 3)
@@ -84,9 +78,15 @@ func SanitizeSettingsMap(settings map[string]interface{}) map[string]interface{}
 
 	customAPI := normalizeCustomTidalAPIValue(sanitized["customTidalApi"])
 	sanitized["customTidalApi"] = customAPI
-	allowTidal := customAPI != ""
-	sanitized["downloader"] = sanitizeDownloaderValue(sanitized["downloader"], allowTidal)
-	sanitized["autoOrder"] = sanitizeAutoOrderValue(sanitized["autoOrder"], allowTidal)
+	sanitized["downloader"] = sanitizeDownloaderValue(sanitized["downloader"])
+	sanitized["autoOrder"] = sanitizeAutoOrderValue(sanitized["autoOrder"])
+	if replayGainMode, exists := sanitized["autoReplayGainMode"]; exists {
+		if value, _ := replayGainMode.(string); strings.EqualFold(strings.TrimSpace(value), "track") {
+			sanitized["autoReplayGainMode"] = "track"
+		} else {
+			sanitized["autoReplayGainMode"] = "album"
+		}
+	}
 
 	return sanitized
 }
@@ -125,8 +125,8 @@ func SanitizePersistedConfigSettings() error {
 		return err
 	}
 
-	sanitized := SanitizeSettingsMap(settings)
-	payload, err := json.MarshalIndent(sanitized, "", "  ")
+	sanitized := SanitizeSettingsMap(FlattenConfigSettings(settings))
+	payload, err := MarshalConfigSettings(sanitized)
 	if err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ func LoadConfigSettings() (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	return SanitizeSettingsMap(settings), nil
+	return SanitizeSettingsMap(FlattenConfigSettings(settings)), nil
 }
 
 func GetRedownloadWithSuffixSetting() bool {
@@ -183,7 +183,10 @@ func GetRedownloadWithSuffixSetting() bool {
 		return false
 	}
 
-	enabled, _ := settings["redownloadWithSuffix"].(bool)
+	enabled, ok := settings["redownloadWithSuffix"].(bool)
+	if !ok {
+		return false
+	}
 	return enabled
 }
 
@@ -200,6 +203,8 @@ func normalizeExistingFileCheckMode(value string) string {
 	switch strings.TrimSpace(strings.ToLower(value)) {
 	case "isrc", "upc":
 		return "isrc"
+	case "hybrid":
+		return "hybrid"
 	default:
 		return "filename"
 	}

@@ -110,19 +110,19 @@ func assignSongstatsLink(rawLink string, links *resolvedTrackLinks) {
 	case strings.Contains(link, "listen.tidal.com/track"):
 		if links.TidalURL == "" {
 			links.TidalURL = link
-			fmt.Println("✓ Tidal URL found via Songstats")
+			fmt.Println("Tidal URL found via Songstats")
 		}
 	case strings.Contains(link, "music.amazon.com"):
 		if links.AmazonURL == "" {
 			if normalized := normalizeAmazonMusicURL(link); normalized != "" {
 				links.AmazonURL = normalized
-				fmt.Println("✓ Amazon URL found via Songstats")
+				fmt.Println("Amazon URL found via Songstats")
 			}
 		}
 	case strings.Contains(link, "deezer.com"):
 		if links.DeezerURL == "" {
 			links.DeezerURL = normalizeDeezerTrackURL(link)
-			fmt.Println("✓ Deezer URL found via Songstats")
+			fmt.Println("Deezer URL found via Songstats")
 		}
 	}
 }

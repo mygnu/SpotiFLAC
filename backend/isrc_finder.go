@@ -79,33 +79,8 @@ func GetSpotifyTrackIdentifiersDirect(spotifyTrackID string) (SpotifyTrackIdenti
 				fmt.Printf("Found identifiers via Spotify metadata: isrc=%s upc=%s\n", identifiers.ISRC, identifiers.UPC)
 				cacheResolvedSpotifyTrackISRC(normalizedTrackID, "", identifiers.ISRC)
 			}
-			if identifiers.ISRC != "" && identifiers.UPC != "" {
-				return identifiers, nil
-			}
 		}
 		metadataErr = extractErr
-	}
-
-	if metadataErr != nil {
-		fmt.Printf("Warning: Spotify metadata identifier lookup failed, falling back to Soundplate: %v\n", metadataErr)
-	}
-
-	if identifiers.ISRC == "" {
-		client := NewSongLinkClient()
-		isrc, resolvedTrackID, soundplateErr := client.lookupSpotifyISRCViaSoundplate(normalizedTrackID)
-		if soundplateErr == nil && isrc != "" {
-			identifiers.ISRC = isrc
-			fmt.Printf("Found ISRC via Soundplate: %s\n", isrc)
-			cacheResolvedSpotifyTrackISRC(normalizedTrackID, resolvedTrackID, isrc)
-			return identifiers, nil
-		}
-
-		if metadataErr != nil && soundplateErr != nil {
-			return identifiers, fmt.Errorf("spotify metadata lookup failed: %v | soundplate lookup failed: %w", metadataErr, soundplateErr)
-		}
-		if soundplateErr != nil && identifiers.UPC == "" {
-			return identifiers, soundplateErr
-		}
 	}
 
 	if identifiers.ISRC != "" || identifiers.UPC != "" {
@@ -191,10 +166,30 @@ func requestSpotifyBytes(client *http.Client, targetURL string, headers map[stri
 		if details == "" {
 			details = resp.Status
 		}
-		return nil, fmt.Errorf("request failed: %s", details)
+		return nil, &spotifyHTTPStatusError{statusCode: resp.StatusCode, details: details}
 	}
 
 	return body, nil
+}
+
+type spotifyHTTPStatusError struct {
+	statusCode int
+	details    string
+}
+
+func (e *spotifyHTTPStatusError) Error() string {
+	return fmt.Sprintf("request failed: %s", e.details)
+}
+
+func isSpotifyAuthFailure(err error) bool {
+	var statusErr *spotifyHTTPStatusError
+	if !errors.As(err, &statusErr) || statusErr == nil {
+		return false
+	}
+
+	return statusErr.statusCode == http.StatusBadRequest ||
+		statusErr.statusCode == http.StatusUnauthorized ||
+		statusErr.statusCode == http.StatusForbidden
 }
 
 func requestSpotifyJSON(client *http.Client, targetURL string, headers map[string]string, target interface{}) error {
@@ -271,17 +266,21 @@ func spotifyTokenIsValid(token *spotifyAnonymousToken) bool {
 	return time.Now().UnixMilli() < token.AccessTokenExpirationTimestampMs-30_000
 }
 
-func requestSpotifyAnonymousAccessToken(client *http.Client) (string, error) {
+func requestSpotifyAnonymousAccessToken(client *http.Client, forceRefresh ...bool) (string, error) {
 	spotifyAnonymousTokenMu.Lock()
 	defer spotifyAnonymousTokenMu.Unlock()
 
-	cachedToken, err := loadSpotifyCachedToken()
-	if err != nil {
-		return "", err
-	}
+	force := len(forceRefresh) > 0 && forceRefresh[0]
 
-	if spotifyTokenIsValid(cachedToken) {
-		return cachedToken.AccessToken, nil
+	if !force {
+		cachedToken, err := loadSpotifyCachedToken()
+		if err != nil {
+			return "", err
+		}
+
+		if spotifyTokenIsValid(cachedToken) {
+			return cachedToken.AccessToken, nil
+		}
 	}
 
 	generatedTOTP, version, err := generateSpotifyTOTP(time.Now())
@@ -389,11 +388,33 @@ func fetchSpotifyRawMetadataByGID(client *http.Client, entityType string, gid st
 		return nil, err
 	}
 
-	return requestSpotifyBytes(
+	body, err := requestSpotifyBytes(
 		client,
 		fmt.Sprintf(spotifyGIDMetadataURL, entityType, gid),
 		map[string]string{
 			"authorization": "Bearer " + accessToken,
+			"accept":        "application/json",
+			"user-agent":    songLinkUserAgent,
+		},
+	)
+	if err == nil {
+		return body, nil
+	}
+
+	if !isSpotifyAuthFailure(err) {
+		return nil, err
+	}
+
+	refreshedToken, refreshErr := requestSpotifyAnonymousAccessToken(client, true)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	return requestSpotifyBytes(
+		client,
+		fmt.Sprintf(spotifyGIDMetadataURL, entityType, gid),
+		map[string]string{
+			"authorization": "Bearer " + refreshedToken,
 			"accept":        "application/json",
 			"user-agent":    songLinkUserAgent,
 		},

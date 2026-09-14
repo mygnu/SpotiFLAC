@@ -11,13 +11,14 @@ import (
 const recentFetchesFileName = "recent_fetches.json"
 
 type RecentFetchItem struct {
-	ID        string `json:"id"`
-	URL       string `json:"url"`
-	Type      string `json:"type"`
-	Name      string `json:"name"`
-	Artist    string `json:"artist"`
-	Image     string `json:"image"`
-	Timestamp int64  `json:"timestamp"`
+	ID         string `json:"id"`
+	URL        string `json:"url"`
+	Type       string `json:"type"`
+	Name       string `json:"name"`
+	Artist     string `json:"artist"`
+	Image      string `json:"image"`
+	IsExplicit bool   `json:"is_explicit,omitempty"`
+	Timestamp  int64  `json:"timestamp"`
 }
 
 var (

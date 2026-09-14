@@ -5,10 +5,57 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
+
+func ApplyExtraFilenameTokens(template, artists string, totalTracks, totalDiscs int) string {
+	template = strings.ReplaceAll(template, "{track_number}", "{track}")
+	template = strings.ReplaceAll(template, "{disc_number}", "{disc}")
+	template = strings.ReplaceAll(template, "{artists}", SanitizeOptionalFilename(artists))
+	if totalTracks > 0 {
+		template = strings.ReplaceAll(template, "{total_tracks}", fmt.Sprintf("%d", totalTracks))
+	} else {
+		template = strings.ReplaceAll(template, "{total_tracks}", "")
+	}
+	if totalDiscs > 0 {
+		template = strings.ReplaceAll(template, "{total_discs}", fmt.Sprintf("%d", totalDiscs))
+	} else {
+		template = strings.ReplaceAll(template, "{total_discs}", "")
+	}
+	return template
+}
+
+func ApplyArtistFilenameTokens(template, artists, albumArtist string) string {
+	primaryArtist := firstArtistCredit(artists)
+	primaryAlbumArtist := firstArtistCredit(albumArtist)
+	if primaryAlbumArtist == "" {
+		primaryAlbumArtist = primaryArtist
+	}
+	template = strings.ReplaceAll(template, "{artist}", SanitizeOptionalFilename(primaryArtist))
+	template = strings.ReplaceAll(template, "{album_artist}", SanitizeOptionalFilename(primaryAlbumArtist))
+	return template
+}
+
+func ApplyFilenameContextTokens(template, category, playlist, creator, upc string) string {
+	template = strings.ReplaceAll(template, "{category}", SanitizeOptionalFilename(category))
+	template = strings.ReplaceAll(template, "{creator}", SanitizeOptionalFilename(creator))
+	template = strings.ReplaceAll(template, "{upc}", SanitizeOptionalFilename(upc))
+	return template
+}
+
+func firstArtistCredit(artistString string) string {
+	trimmed := strings.TrimSpace(artistString)
+	if trimmed == "" {
+		return trimmed
+	}
+	if before, _, found := strings.Cut(trimmed, ";"); found {
+		return strings.TrimSpace(before)
+	}
+	return GetFirstArtist(trimmed)
+}
 
 func buildFormattedFilenameBase(trackName, artistName, albumName, albumArtist, releaseDate, filenameFormat, playlistName, playlistOwner, isrc string, includeTrackNumber bool, position, discNumber int, useAlbumTrackNumber bool) string {
 	safeTitle := SanitizeFilename(trackName)
@@ -113,10 +160,19 @@ func mustFileSize(path string) int64 {
 }
 
 func SanitizeFilename(name string) string {
+	return sanitizeFilenameForOS(name, runtime.GOOS)
+}
+
+func sanitizeFilenameForOS(name, goos string) string {
 
 	sanitized := strings.ReplaceAll(name, "/", " ")
 
-	re := regexp.MustCompile(`[<>:"\\|?*]`)
+	if goos == "windows" {
+
+		sanitized = strings.ReplaceAll(sanitized, "?", "？")
+	}
+
+	re := regexp.MustCompile(`[<>:"\\|*]`)
 	sanitized = re.ReplaceAllString(sanitized, " ")
 
 	var result strings.Builder
@@ -165,7 +221,7 @@ func GetFirstArtist(artistString string) string {
 	if artistString == "" {
 		return ""
 	}
-	delimiters := []string{", ", " & ", " feat. ", " ft. ", " featuring "}
+	delimiters := []string{";", " feat. ", " ft. ", " featuring "}
 	for _, d := range delimiters {
 		if idx := strings.Index(strings.ToLower(artistString), d); idx != -1 {
 			return strings.TrimSpace(artistString[:idx])

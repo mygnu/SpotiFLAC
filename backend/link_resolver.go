@@ -29,30 +29,27 @@ func (s *SongLinkClient) resolveSpotifyTrackLinks(spotifyTrackID string, region 
 		links.ISRC = isrc
 	}
 
-	if links.ISRC != "" {
-		resolvers := orderedLinkResolvers()
-
-		for _, resolver := range resolvers {
-			switch resolver {
-			case linkResolverProviderSongstats:
-				addedData, songstatsErr := s.resolveLinksViaSongstats(links)
-				if songstatsErr != nil {
-					attempts = append(attempts, fmt.Sprintf("songstats: %v", songstatsErr))
-				} else if addedData {
-					fmt.Println("Using Songstats as configured link resolver")
-				}
-			case linkResolverProviderDeezerSongLink:
-				addedData, deezerSongLinkErr := s.resolveLinksViaDeezerSongLink(links, region)
-				if deezerSongLinkErr != nil {
-					attempts = append(attempts, fmt.Sprintf("deezer-songlink: %v", deezerSongLinkErr))
-				} else if addedData {
-					fmt.Println("Using Songlink as configured link resolver")
-				}
+	resolvers := orderedLinkResolvers()
+	for _, resolver := range resolvers {
+		switch resolver {
+		case linkResolverProviderSongstats:
+			addedData, songstatsErr := s.resolveLinksViaSongstats(links)
+			if songstatsErr != nil {
+				attempts = append(attempts, fmt.Sprintf("songstats: %v", songstatsErr))
+			} else if addedData {
+				fmt.Println("Using Songstats as configured link resolver")
 			}
-
-			if links.TidalURL != "" && links.AmazonURL != "" {
-				return links, nil
+		case linkResolverProviderDeezerSongLink:
+			addedData, songLinkErr := s.resolveLinksViaDeezerSongLink(links, spotifyTrackID, region)
+			if songLinkErr != nil {
+				attempts = append(attempts, fmt.Sprintf("songlink: %v", songLinkErr))
+			} else if addedData {
+				fmt.Println("Using Songlink as configured link resolver")
 			}
+		}
+
+		if links.TidalURL != "" && links.AmazonURL != "" {
+			return links, nil
 		}
 	}
 
@@ -104,37 +101,49 @@ func (s *SongLinkClient) resolveLinksViaSongstats(links *resolvedTrackLinks) (bo
 	return *links != before, nil
 }
 
-func (s *SongLinkClient) resolveLinksViaDeezerSongLink(links *resolvedTrackLinks, region string) (bool, error) {
-	if links == nil || links.ISRC == "" {
-		return false, fmt.Errorf("ISRC is required for Deezer song.link resolver")
+func (s *SongLinkClient) resolveLinksViaDeezerSongLink(links *resolvedTrackLinks, spotifyTrackID string, region string) (bool, error) {
+	if links == nil {
+		return false, fmt.Errorf("links is required for song.link resolver")
 	}
 
 	before := *links
 	var attempts []string
 
-	if links.DeezerURL == "" {
-		fmt.Printf("Resolving Deezer track from ISRC %s\n", links.ISRC)
-		deezerURL, err := s.lookupDeezerTrackURLByISRC(links.ISRC)
-		if err != nil {
-			attempts = append(attempts, fmt.Sprintf("deezer isrc: %v", err))
+	if trackID, err := extractSpotifyTrackID(spotifyTrackID); err != nil {
+		attempts = append(attempts, fmt.Sprintf("spotify track id: %v", err))
+	} else {
+		fmt.Printf("Scraping song.link via Spotify track %s\n", trackID)
+		data, scrapeErr := s.scrapeSongLinkPage(fmt.Sprintf("https://song.link/s/%s", trackID), region)
+		if scrapeErr != nil {
+			attempts = append(attempts, fmt.Sprintf("song.link spotify: %v", scrapeErr))
 		} else {
-			links.DeezerURL = deezerURL
-			fmt.Printf("Found Deezer URL: %s\n", links.DeezerURL)
+			mergeSongLinkScrape(links, data)
 		}
 	}
 
-	if links.DeezerURL != "" {
-		fmt.Println("Resolving streaming URLs from song.link via Deezer URL...")
-		deezerResp, err := s.fetchSongLinkLinksByURL(links.DeezerURL, region)
-		if err != nil {
-			attempts = append(attempts, fmt.Sprintf("song.link deezer: %v", err))
-		} else {
-			mergeSongLinkResponse(links, deezerResp)
+	if (links.TidalURL == "" || links.AmazonURL == "") && links.ISRC != "" {
+		if links.DeezerURL == "" {
+			fmt.Printf("Resolving Deezer track from ISRC %s\n", links.ISRC)
+			deezerURL, err := s.lookupDeezerTrackURLByISRC(links.ISRC)
+			if err != nil {
+				attempts = append(attempts, fmt.Sprintf("deezer isrc: %v", err))
+			} else {
+				links.DeezerURL = deezerURL
+				fmt.Printf("Found Deezer URL: %s\n", links.DeezerURL)
+			}
 		}
 
-		if links.ISRC == "" {
-			if resolvedISRC, deezerISRCErr := getDeezerISRC(links.DeezerURL); deezerISRCErr == nil {
-				links.ISRC = resolvedISRC
+		if links.DeezerURL != "" {
+			if deezerTrackID, err := extractDeezerTrackID(links.DeezerURL); err != nil {
+				attempts = append(attempts, fmt.Sprintf("deezer track id: %v", err))
+			} else {
+				fmt.Printf("Scraping song.link via Deezer track %s\n", deezerTrackID)
+				data, scrapeErr := s.scrapeSongLinkPage(fmt.Sprintf("https://song.link/d/%s", deezerTrackID), region)
+				if scrapeErr != nil {
+					attempts = append(attempts, fmt.Sprintf("song.link deezer: %v", scrapeErr))
+				} else {
+					mergeSongLinkScrape(links, data)
+				}
 			}
 		}
 	}
@@ -147,7 +156,7 @@ func (s *SongLinkClient) resolveLinksViaDeezerSongLink(links *resolvedTrackLinks
 	}
 
 	if len(attempts) == 0 {
-		attempts = append(attempts, "no links found via deezer-songlink")
+		attempts = append(attempts, "no links found via song.link")
 	}
 
 	return false, errors.New(strings.Join(attempts, " | "))
